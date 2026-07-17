@@ -8,7 +8,11 @@ import sys
 from pathlib import Path
 
 new_path = (Path(__file__).parent / ".." / "@PYTHON_INSTALL_PATH@").resolve()
-assert new_path.is_dir()
+if not new_path.is_dir():
+    raise RuntimeError(
+        f"revng Python modules were not installed at {new_path}; "
+        "reinstall using the Python3_EXECUTABLE selected during CMake configuration"
+    )
 
 if str(new_path) not in sys.path:
     if "PYTHONPATH" in os.environ:

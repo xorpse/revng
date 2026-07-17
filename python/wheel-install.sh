@@ -10,10 +10,8 @@ ARGS=(
   --no-index
   --no-build-isolation
   --ignore-installed
+  --upgrade
   --no-deps
-  --prefix "$2"
+  --target "${DESTDIR:-}$2/$4"
 )
-if test -n "${DESTDIR:-}"; then
-  ARGS+=(--root "$DESTDIR")
-fi
-python -m pip install "${ARGS[@]}" "$1"
+"$3" -m pip install "${ARGS[@]}" "$1"
