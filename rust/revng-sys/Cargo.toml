@@ -1,0 +1,11 @@
+[package]
+name = "revng-sys"
+version = "0.1.0"
+edition = "2021"
+links = "revng"
+license = "MIT"
+publish = false
+
+[build-dependencies]
+revng-sdk = { path = "../revng-sdk" }
+

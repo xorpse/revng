@@ -4,7 +4,7 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
-#ifdef __cplusplus
+#if defined(__cplusplus) && !defined(REVNG_PIPELINEC_C_ONLY)
 #include <cstdint>
 
 #include "revng/Pipeline/Container.h"
@@ -20,7 +20,9 @@
 #include <stdint.h>
 #endif
 
-#ifdef __cplusplus
+#include "revng/PipelineC/Callbacks.h"
+
+#if defined(__cplusplus) && !defined(REVNG_PIPELINEC_C_ONLY)
 #include "revng/PipelineC/ForwardDeclarations.h"
 #else
 #include "revng/PipelineC/ForwardDeclarationsC.h"

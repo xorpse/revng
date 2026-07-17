@@ -4,7 +4,9 @@
 
 extern "C" {
 #include "dlfcn.h"
+#ifndef __APPLE__
 #include "link.h"
+#endif
 }
 
 #include <map>
@@ -33,6 +35,7 @@ struct Resources {
 llvm::ManagedStatic<Resources> Resources;
 
 extern "C" {
+#ifndef __APPLE__
 static int
 dlIteratePhdrCallback(struct dl_phdr_info *Info, size_t Size, void *Data) {
   using llvm::StringRef;
@@ -49,6 +52,7 @@ dlIteratePhdrCallback(struct dl_phdr_info *Info, size_t Size, void *Data) {
 
   return 0;
 }
+#endif
 }
 
 static void initialize() {
@@ -57,12 +61,19 @@ static void initialize() {
 
   Resources->FirstCall = false;
 
-  dl_iterate_phdr(dlIteratePhdrCallback, nullptr);
-
   using namespace llvm::sys::path;
   constexpr const char *MainLibrary = "librevngSupport";
   using llvm::StringRef;
+#ifdef __APPLE__
+  Dl_info Info;
+  int Result = dladdr(reinterpret_cast<const void *>(&initialize), &Info);
+  revng_assert(Result != 0 and Info.dli_fname != nullptr);
+  StringRef MainLibraryFullPath(Info.dli_fname);
+  Resources->LibrariesFullPath[MainLibrary] = MainLibraryFullPath.str();
+#else
+  dl_iterate_phdr(dlIteratePhdrCallback, nullptr);
   StringRef MainLibraryFullPath = Resources->LibrariesFullPath.at(MainLibrary);
+#endif
   Resources->CurrentRoot = parent_path(parent_path(MainLibraryFullPath));
 }
 

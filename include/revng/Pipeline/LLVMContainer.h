@@ -76,4 +76,10 @@ private:
   void mergeBackImpl(ThisType &&OtherContainer) final;
 };
 
+// Keep the extensible inspector registry in a single dylib. Inline
+// function-local statics are separate objects across Mach-O images.
+template<>
+EnumerableContainer<LLVMContainer>::StaticContainer &
+EnumerableContainer<LLVMContainer>::getRegisteredInspectors();
+
 } // namespace pipeline

@@ -27,6 +27,18 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
+#ifdef REVNG_STOCK_LLVM_COMPAT
+// revng's LLVM fork extends CloneModule with a three-way filtering action.
+// Model that API when building against the stock LLVM shipped by Homebrew.
+namespace llvm {
+enum class CloneAction {
+  Clone,
+  MakeDeclaration,
+  Omit
+};
+} // namespace llvm
+#endif
+
 #include "revng/ADT/Concepts.h"
 #include "revng/Support/BasicBlockID.h"
 #include "revng/Support/Debug.h"

@@ -7,6 +7,11 @@
 
 namespace pipeline {
 
+llvm::SmallVector<Registry *, 4> &Registry::getInstances() {
+  static llvm::SmallVector<Registry *, 4> Instances;
+  return Instances;
+}
+
 KindsRegistry Registry::registerAllKinds() {
   KindsRegistry Registry;
   for (const auto &Reg : getInstances())

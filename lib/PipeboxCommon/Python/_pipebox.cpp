@@ -20,10 +20,11 @@
 #include "revng/PipeboxCommon/Model.h"
 #include "revng/Support/InitRevng.h"
 
-static std::map<int, sighandler_t> SavedSignals;
+using SignalHandler = void (*)(int);
+static std::map<int, SignalHandler> SavedSignals;
 
 static void handleSignal(int SigNo) {
-  const sighandler_t &Handler = SavedSignals[SigNo];
+  const SignalHandler &Handler = SavedSignals[SigNo];
 
   {
     // re-acquire the GIL since the signal might have been received while a pipe
@@ -109,7 +110,7 @@ NB_MODULE(_pipebox, m) {
 
     // Save the signal pointers for later
     for (int SigNumber : Signals) {
-      sighandler_t Handler = signal(SigNumber, SIG_DFL);
+      SignalHandler Handler = signal(SigNumber, SIG_DFL);
       if (Handler != SIG_ERR && Handler != NULL)
         SavedSignals[SigNumber] = Handler;
     }

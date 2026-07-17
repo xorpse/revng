@@ -6,7 +6,64 @@ cmake_minimum_required(VERSION 3.15.0)
 
 project(revng)
 
+if(APPLE)
+  set(REVNG_SDK_BUILD_DEFAULT ON)
+else()
+  set(REVNG_SDK_BUILD_DEFAULT OFF)
+endif()
+option(REVNG_SDK_BUILD
+       "Build the embeddable PipelineC/lifter SDK instead of all revng tools"
+       ${REVNG_SDK_BUILD_DEFAULT})
+
+if(APPLE)
+  set(REVNG_BACKEND_LIBTCG_DEFAULT OFF)
+else()
+  set(REVNG_BACKEND_LIBTCG_DEFAULT ON)
+endif()
+option(REVNG_BACKEND_LIBTCG "Build the libtcg lifter backend"
+       ${REVNG_BACKEND_LIBTCG_DEFAULT})
+if(APPLE AND REVNG_BACKEND_LIBTCG)
+  message(FATAL_ERROR "The libtcg backend is not supported on macOS")
+endif()
+
+if(APPLE)
+  set(REVNG_BUILD_RUNTIME_SUPPORT_DEFAULT OFF)
+else()
+  set(REVNG_BUILD_RUNTIME_SUPPORT_DEFAULT ON)
+endif()
+option(
+  REVNG_BUILD_RUNTIME_SUPPORT
+  "Build the Linux runtime modules used to execute recompiled binaries"
+  ${REVNG_BUILD_RUNTIME_SUPPORT_DEFAULT})
+
+option(
+  REVNG_BUNDLE_TOOLCHAIN_RUNTIME
+  "Install the LLVM/Clang/MLIR dylibs needed by a relocatable macOS package"
+  ${REVNG_SDK_BUILD_DEFAULT})
+
+if(APPLE AND REVNG_SDK_BUILD)
+  set(REVNG_STOCK_LLVM_COMPAT_DEFAULT ON)
+else()
+  set(REVNG_STOCK_LLVM_COMPAT_DEFAULT OFF)
+endif()
+option(
+  REVNG_STOCK_LLVM_COMPAT
+  "Use the reduced feature set available in an unpatched LLVM on macOS"
+  ${REVNG_STOCK_LLVM_COMPAT_DEFAULT})
+if(REVNG_STOCK_LLVM_COMPAT)
+  add_compile_definitions(REVNG_STOCK_LLVM_COMPAT)
+endif()
+if(APPLE)
+  message(STATUS "Native macOS support is experimental; building without libtcg")
+endif()
+
 include(share/revng/cmake/Common.cmake)
+
+# Minimal embeddable pipeline used by the C/C++/Rust library examples. Install
+# it in both SDK and full-decompiler builds.
+install(FILES "${CMAKE_SOURCE_DIR}/tests/unit/PipelineCAddressSpace.yml"
+        DESTINATION share/revng/pipelines
+        RENAME address-space.yml)
 
 find_program(CLANG_PATH NAMES clang)
 
@@ -68,6 +125,9 @@ add_flag_if_available("-Wno-unused-variable")
 add_flag_if_available("-Wno-maybe-uninitialized")
 add_flag_if_available("-Wno-init-list-lifetime")
 add_flag_if_available("-Wno-ambiguous-reversed-operator")
+add_flag_if_available("-Wno-unnecessary-virtual-specifier")
+add_flag_if_available("-Wno-alias-template-in-declaration-name")
+add_flag_if_available("-Wno-unused-but-set-variable")
 
 # Add some extra warnings
 add_flag_if_available("-Wstrict-aliasing")
@@ -76,6 +136,11 @@ add_flag_if_available("-fstrict-aliasing")
 add_flag_if_available("-Wnon-virtual-dtor")
 add_flag_if_available("-Wunreachable-code-break")
 add_flag_if_available("-Winconsistent-missing-destructor-override")
+if(APPLE)
+  # LLVM 16's ScopedPrinter intentionally omits these annotations, while
+  # current Apple Clang enables the diagnostic under our -Werror policy.
+  add_flag_if_available("-Wno-inconsistent-missing-destructor-override")
+endif()
 add_flag_if_available("-Wnewline-eof")
 add_flag_if_available("-Wmissing-prototypes")
 add_flag_if_available("-Wimplicit-fallthrough")
@@ -99,6 +164,22 @@ endif()
 # Link LLVM
 #
 find_package(LLVM REQUIRED CONFIG)
+if(APPLE AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 21)
+  # Apple Clang 21 treats a comparison through this dependent pointer as a
+  # template-id while parsing LLVM 16. Keep the compatibility copy in the
+  # generated include tree; never modify the installed Homebrew headers.
+  list(GET LLVM_INCLUDE_DIRS 0 LLVM_PRIMARY_INCLUDE_DIR)
+  set(DOMTREE_HEADER
+      "${LLVM_PRIMARY_INCLUDE_DIR}/llvm/Support/GenericDomTreeConstruction.h")
+  file(READ "${DOMTREE_HEADER}" DOMTREE_HEADER_CONTENTS)
+  string(REPLACE "if (VInfo->Parent < LastLinked)"
+                 "if ((VInfo->Parent) < LastLinked)"
+                 DOMTREE_HEADER_CONTENTS "${DOMTREE_HEADER_CONTENTS}")
+  file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/include/llvm/Support")
+  file(WRITE
+       "${CMAKE_BINARY_DIR}/include/llvm/Support/GenericDomTreeConstruction.h"
+       "${DOMTREE_HEADER_CONTENTS}")
+endif()
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 link_directories(${LLVM_LIBRARY_DIRS})
@@ -118,6 +199,11 @@ llvm_map_components_to_libnames(
   CodeGen
   Passes
   TargetParser)
+if(APPLE AND REVNG_STOCK_LLVM_COMPAT)
+  # A single shared LLVM instance is required: command-line registries and
+  # other LLVM-managed globals cross revng dylib boundaries.
+  set(LLVM_LIBRARIES LLVM)
+endif()
 
 # MLIR CMake stuff
 find_package(MLIR REQUIRED CONFIG)
@@ -127,6 +213,16 @@ include_directories(${MLIR_INCLUDE_DIRS})
 # Link Clang
 #
 find_package(Clang REQUIRED CONFIG)
+
+if(APPLE AND REVNG_BUNDLE_TOOLCHAIN_RUNTIME)
+  # revng links to the component dylibs supplied by its pinned LLVM fork. Keep
+  # them in the same relative lib directory as revng's dylibs so an installed
+  # SDK or decompiler does not depend on the toolchain build directory.
+  foreach(LLVM_LIBRARY_DIR IN LISTS LLVM_LIBRARY_DIRS)
+    file(GLOB LLVM_RUNTIME_DYLIBS "${LLVM_LIBRARY_DIR}/*.dylib")
+    install(FILES ${LLVM_RUNTIME_DYLIBS} DESTINATION lib)
+  endforeach()
+endif()
 
 #
 # Component hash
@@ -142,13 +238,15 @@ add_custom_command(
     > "${COMPONENT_HASH_PATH}")
 add_custom_target(generate-component-hash ALL DEPENDS "${COMPONENT_HASH_PATH}")
 install(FILES "${COMPONENT_HASH_PATH}"
-        DESTINATION "${CMAKE_INSTALL_DIR}/share/revng/component-hashes/")
+        DESTINATION "share/revng/component-hashes/")
 
 #
 # share/revng
 #
-add_custom_target(copy_share ALL COMMAND cp -Tar "${CMAKE_SOURCE_DIR}/share/"
-                                         "${CMAKE_BINARY_DIR}/share/")
+add_custom_target(
+  copy_share ALL
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/share"
+          "${CMAKE_BINARY_DIR}/share")
 
 install(
   DIRECTORY "${CMAKE_BINARY_DIR}/share/"
@@ -181,10 +279,14 @@ file(APPEND "${ADDITIONAL_BIN_PATHS}" "${RELATIVE_LLVM_TOOLS_BINARY_DIR}\n")
 set(SUPPORT_MODULES_CONFIGS "normal;trace")
 set(SUPPORT_MODULES_CONFIG_normal "")
 set(SUPPORT_MODULES_CONFIG_trace "-DTRACE")
+if(APPLE AND CMAKE_OSX_SYSROOT)
+  set(REVNG_TARGET_CLANG_PLATFORM_FLAGS -isysroot "${CMAKE_OSX_SYSROOT}")
+endif()
 
 # A set of llvm modules that contain all the known helpers.
 set(HELPER_MODULE_LIST, "")
 
+if(REVNG_BUILD_RUNTIME_SUPPORT)
 foreach(
   ARCH
   aarch64
@@ -194,19 +296,22 @@ foreach(
   x86_64
   i386
   s390x)
-  set(OUTPUT "early-linked-${ARCH}.ll")
-  add_custom_command(
-    OUTPUT "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}"
-    DEPENDS "${CMAKE_SOURCE_DIR}/share/revng/early-linked.c"
-    COMMAND
-      ${TARGET_CLANG} ARGS "${CMAKE_SOURCE_DIR}/share/revng/early-linked.c" -o
-      "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}" -S -emit-llvm -g
-      -DTARGET_${ARCH} -I"${CMAKE_SOURCE_DIR}/share/revng"
-      -I"${CMAKE_CURRENT_SOURCE_DIR}/include")
-  add_custom_target("early-linked-module-${OUTPUT}" ALL
-                    DEPENDS "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
-  add_dependencies(revng-all-binaries "early-linked-module-${OUTPUT}")
-  list(APPEND HELPER_MODULE_LIST "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
+  if(REVNG_BACKEND_LIBTCG)
+    set(OUTPUT "early-linked-${ARCH}.ll")
+    add_custom_command(
+      OUTPUT "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}"
+      DEPENDS "${CMAKE_SOURCE_DIR}/share/revng/early-linked.c"
+      COMMAND
+        ${TARGET_CLANG} ARGS "${CMAKE_SOURCE_DIR}/share/revng/early-linked.c"
+        -o "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}" -S -emit-llvm -g
+        -DTARGET_${ARCH} -I"${CMAKE_SOURCE_DIR}/share/revng"
+        -I"${CMAKE_CURRENT_SOURCE_DIR}/include"
+        ${REVNG_TARGET_CLANG_PLATFORM_FLAGS})
+    add_custom_target("early-linked-module-${OUTPUT}" ALL
+                      DEPENDS "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
+    add_dependencies(revng-all-binaries "early-linked-module-${OUTPUT}")
+    list(APPEND HELPER_MODULE_LIST "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
+  endif()
 
   # Enable the support for C exceptions to avoid optimizations that break
   # exception support when linking a module with isolated functions
@@ -220,109 +325,114 @@ foreach(
         -fexceptions -o "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}" -S
         -emit-llvm -g -DTARGET_${ARCH} -I"${CMAKE_SOURCE_DIR}/share/revng"
         -I"${CMAKE_CURRENT_SOURCE_DIR}/include"
-        ${SUPPORT_MODULES_CONFIG_${CONFIG}})
+        ${SUPPORT_MODULES_CONFIG_${CONFIG}}
+        ${REVNG_TARGET_CLANG_PLATFORM_FLAGS})
     add_custom_target("support-module-${OUTPUT}" ALL
                       DEPENDS "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
     add_dependencies(revng-all-binaries "support-module-${OUTPUT}")
     list(APPEND HELPER_MODULE_LIST "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
   endforeach()
 
-  # Annotate `libtcg-helpers-*.bc`. This loads the `libtcg-helpers` bitcode
-  # files and runs analyses that determine which CSVs are accessed by each
-  # helper function.
-  set(LIBTCG_HELPERS
-      "${CMAKE_INSTALL_PREFIX}/share/libtcg/libtcg-helpers-${ARCH}.bc")
-  set(LIBTCG_HELPERS_FULL
-      "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-full-${ARCH}.bc")
+  if(REVNG_BACKEND_LIBTCG)
+    # Annotate `libtcg-helpers-*.bc`. This loads the `libtcg-helpers` bitcode
+    # files and runs analyses that determine which CSVs are accessed by each
+    # helper function.
+    set(LIBTCG_HELPERS
+        "${CMAKE_INSTALL_PREFIX}/share/libtcg/libtcg-helpers-${ARCH}.bc")
+    set(LIBTCG_HELPERS_FULL
+        "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-full-${ARCH}.bc")
 
-  # Build-time helper-annotation pipeline. Order is significant:
-  #
-  # * `mark-inline-helpers-up-to` tags every helper that transitively reaches
-  #   the configured runtime-library directories with the `revng_inline`
-  #   section. Runs first so all subsequent passes see the tag set.
-  # * `sroa` + `instsimplify` simplify the body of every helper so the
-  #   downstream analyses see the smallest possible IR.
-  # * `cpu-loop-exit` rewrites the CPU loop-exit pattern into something
-  #   `analyze-helper-arguments` can understand.
-  # * `analyze-helper-arguments` discovers, for every helper, which arguments
-  #   alias CSVs at the call site.
-  # * `loop-unroll` (x86 only, see below) unrolls loops so the subsequent
-  #   `fix-helpers` pass can rewrite the accesses contained in bounded loop
-  #   bodies.
-  # * `fix-helpers` rewrites helper bodies to access CSVs via the env pointer,
-  #   switching on env-relative offsets.
-  # * `detect-uninlinable-helpers` excludes not viable helpers from inlining.
+    # Build-time helper-annotation pipeline. Order is significant:
+    #
+    # * `mark-inline-helpers-up-to` tags every helper that transitively reaches
+    #   the configured runtime-library directories with the `revng_inline`
+    #   section. Runs first so all subsequent passes see the tag set.
+    # * `sroa` + `instsimplify` simplify the body of every helper so the
+    #   downstream analyses see the smallest possible IR.
+    # * `cpu-loop-exit` rewrites the CPU loop-exit pattern into something
+    #   `analyze-helper-arguments` can understand.
+    # * `analyze-helper-arguments` discovers, for every helper, which arguments
+    #   alias CSVs at the call site.
+    # * `loop-unroll` (x86 only, see below) unrolls loops so the subsequent
+    #   `fix-helpers` pass can rewrite the accesses contained in bounded loop
+    #   bodies.
+    # * `fix-helpers` rewrites helper bodies to access CSVs via the env pointer,
+    #   switching on env-relative offsets.
+    # * `detect-uninlinable-helpers` excludes not viable helpers from inlining.
 
-  # Only the x86 softfloat helpers iterate over the vector-register lanes with
-  # bounded `for` loops (e.g. the packed `helper_*p[sd]` operate on
-  # `XMM/ZMM_D(i)`). `fix-helpers` can only rewrite the per-lane CSV accesses
-  # once those loops are unrolled. This step is not needed on other archs, so we
-  # avoid it to save space on the generated libtcg helpers and build time.
-  set(EXTRA_HELPER_PASSES "")
-  if(ARCH STREQUAL "x86_64" OR ARCH STREQUAL "i386")
-    set(EXTRA_HELPER_PASSES -loop-unroll)
-  endif()
+    # Only the x86 softfloat helpers iterate over the vector-register lanes with
+    # bounded `for` loops (e.g. the packed `helper_*p[sd]` operate on
+    # `XMM/ZMM_D(i)`). `fix-helpers` can only rewrite the per-lane CSV accesses
+    # once those loops are unrolled. This step is not needed on other archs, so
+    # we avoid it to save space on the generated libtcg helpers and build time.
+    set(EXTRA_HELPER_PASSES "")
+    if(ARCH STREQUAL "x86_64" OR ARCH STREQUAL "i386")
+      set(EXTRA_HELPER_PASSES -loop-unroll)
+    endif()
 
-  add_custom_command(
-    OUTPUT "${LIBTCG_HELPERS_FULL}"
-    DEPENDS "${LIBTCG_HELPERS}" revng-all-binaries revngHelperArgumentsAnalysis
-            revngHelperInliningAnalyses
-    COMMAND
-      ./bin/revng opt -mark-inline-helpers-up-to -sroa -instsimplify
-      -cpu-loop-exit -analyze-helper-arguments ${EXTRA_HELPER_PASSES}
-      -fix-helpers -fix-helpers-architecture="${ARCH}" -dce
-      -detect-uninlinable-helpers "${LIBTCG_HELPERS}" -o
-      "${LIBTCG_HELPERS_FULL}")
-  add_custom_target("annotated-libtcg-helpers-${ARCH}" ALL
-                    DEPENDS "${LIBTCG_HELPERS_FULL}")
-
-  function(process_helper_module)
-    set(options)
-    set(oneValueArgs NAME)
-    set(multiValueArgs PASSES)
-    cmake_parse_arguments(OPT "${options}" "${oneValueArgs}"
-                          "${multiValueArgs}" ${ARGN})
-
-    set(PROCESS_HELPER_MODULE_OUTPUT
-        "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-${OPT_NAME}-${ARCH}.bc")
-    list(TRANSFORM OPT_PASSES PREPEND -)
     add_custom_command(
-      OUTPUT "${PROCESS_HELPER_MODULE_OUTPUT}"
-      DEPENDS "${LIBTCG_HELPERS_FULL}" revng-all-binaries
+      OUTPUT "${LIBTCG_HELPERS_FULL}"
+      DEPENDS "${LIBTCG_HELPERS}" revng-all-binaries
               revngHelperArgumentsAnalysis revngHelperInliningAnalyses
-      COMMAND ./bin/revng opt ${OPT_PASSES} "${LIBTCG_HELPERS_FULL}" -o
-              "${PROCESS_HELPER_MODULE_OUTPUT}")
-    add_custom_target("annotated-libtcg-helpers-${OPT_NAME}-${ARCH}" ALL
-                      DEPENDS "${PROCESS_HELPER_MODULE_OUTPUT}")
-    list(APPEND HELPER_MODULE_LIST "${PROCESS_HELPER_MODULE_OUTPUT}")
-    set(HELPER_MODULE_LIST
-        "${HELPER_MODULE_LIST}"
-        PARENT_SCOPE)
-  endfunction()
+      COMMAND
+        ./bin/revng opt -mark-inline-helpers-up-to -sroa -instsimplify
+        -cpu-loop-exit -analyze-helper-arguments ${EXTRA_HELPER_PASSES}
+        -fix-helpers -fix-helpers-architecture="${ARCH}" -dce
+        -detect-uninlinable-helpers "${LIBTCG_HELPERS}" -o
+        "${LIBTCG_HELPERS_FULL}")
+    add_custom_target("annotated-libtcg-helpers-${ARCH}" ALL
+                      DEPENDS "${LIBTCG_HELPERS_FULL}")
 
-  # Produce to-inline version of helpers. In this version the bitcode file only
-  # contains helper functions that are in the `revng_inline` section and the
-  # CSVs that are used by them. This is used by `inline-helpers` to allow
-  # inlining the body of the `revng_inline` function into the isolated
-  # functions' bodies.
-  process_helper_module(
-    NAME
-    to-inline
-    PASSES
-    slim-down-helpers-module
-    sroa
-    instsimplify
-    simplifycfg
-    strip-dead-debug-info)
+    function(process_helper_module)
+      set(options)
+      set(oneValueArgs NAME)
+      set(multiValueArgs PASSES)
+      cmake_parse_arguments(OPT "${options}" "${oneValueArgs}"
+                            "${multiValueArgs}" ${ARGN})
 
-  # Produce declarations-only version of helpers. In this version of the bitcode
-  # file all the helper functions have been turned into declarations and all
-  # CSVs have been dropped. This will be used in `lift` to import the helper
-  # declarations to be used in the lifting process.
-  process_helper_module(
-    NAME declarations-only PASSES helpers-module-to-declarations globaldce
-    strip-dead-debug-info)
+      set(PROCESS_HELPER_MODULE_OUTPUT
+          "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-${OPT_NAME}-${ARCH}.bc"
+      )
+      list(TRANSFORM OPT_PASSES PREPEND -)
+      add_custom_command(
+        OUTPUT "${PROCESS_HELPER_MODULE_OUTPUT}"
+        DEPENDS "${LIBTCG_HELPERS_FULL}" revng-all-binaries
+                revngHelperArgumentsAnalysis revngHelperInliningAnalyses
+        COMMAND ./bin/revng opt ${OPT_PASSES} "${LIBTCG_HELPERS_FULL}" -o
+                "${PROCESS_HELPER_MODULE_OUTPUT}")
+      add_custom_target("annotated-libtcg-helpers-${OPT_NAME}-${ARCH}" ALL
+                        DEPENDS "${PROCESS_HELPER_MODULE_OUTPUT}")
+      list(APPEND HELPER_MODULE_LIST "${PROCESS_HELPER_MODULE_OUTPUT}")
+      set(HELPER_MODULE_LIST
+          "${HELPER_MODULE_LIST}"
+          PARENT_SCOPE)
+    endfunction()
+
+    # Produce to-inline version of helpers. In this version the bitcode file
+    # only contains helper functions that are in the `revng_inline` section and
+    # the CSVs that are used by them. This is used by `inline-helpers` to allow
+    # inlining the body of the `revng_inline` function into the isolated
+    # functions' bodies.
+    process_helper_module(
+      NAME
+      to-inline
+      PASSES
+      slim-down-helpers-module
+      sroa
+      instsimplify
+      simplifycfg
+      strip-dead-debug-info)
+
+    # Produce declarations-only version of helpers. In this version of the
+    # bitcode file all the helper functions have been turned into declarations
+    # and all CSVs have been dropped. This will be used in `lift` to import the
+    # helper declarations to be used in the lifting process.
+    process_helper_module(
+      NAME declarations-only PASSES helpers-module-to-declarations globaldce
+      strip-dead-debug-info)
+  endif()
 endforeach()
+endif()
 
 # Custom command to create .clang-format file from revng-check-conventions
 add_custom_command(
@@ -342,8 +452,9 @@ add_custom_target(clang-format-dot-file ALL
 # libexec/revng
 #
 add_custom_target(
-  copy_libexec ALL COMMAND cp -Tar "${CMAKE_SOURCE_DIR}/libexec/"
-                           "${CMAKE_BINARY_DIR}/libexec/")
+  copy_libexec ALL
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/libexec"
+          "${CMAKE_BINARY_DIR}/libexec")
 install(
   DIRECTORY "${CMAKE_BINARY_DIR}/libexec/"
   DESTINATION libexec/
@@ -365,20 +476,45 @@ enable_testing()
 # needed to compile nanobind module and friends, provides the
 # $Python_INCLUDE_DIRS and $Python_LIBRARIES variables
 #
+if(REVNG_SDK_BUILD)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+else()
 find_package(
-  Python3
-  COMPONENTS Interpreter Development
-  REQUIRED)
-file(RELATIVE_PATH PYTHON_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}"
-     "${Python3_SITELIB}")
+    Python3
+    COMPONENTS Interpreter Development
+    REQUIRED)
+endif()
+
+if(NOT REVNG_SDK_BUILD AND NOT TARGET nanobind)
+  find_path(NANOBIND_INCLUDE_DIR nanobind/nanobind.h REQUIRED)
+  find_library(NANOBIND_LIBRARY nanobind REQUIRED)
+  add_library(nanobind SHARED IMPORTED GLOBAL)
+  set_target_properties(
+    nanobind
+    PROPERTIES IMPORTED_LOCATION "${NANOBIND_LIBRARY}"
+               INTERFACE_COMPILE_DEFINITIONS NB_SHARED
+               INTERFACE_INCLUDE_DIRECTORIES "${NANOBIND_INCLUDE_DIR}")
+  install(FILES "${NANOBIND_LIBRARY}" DESTINATION lib)
+endif()
+if(APPLE)
+  # Homebrew's Python reports a site-packages directory outside its framework
+  # prefix. Keep binary distributions self-contained and relocatable instead.
+  set(PYTHON_INSTALL_PATH
+      "lib/python${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}/site-packages")
+else()
+  file(RELATIVE_PATH PYTHON_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}"
+       "${Python3_SITELIB}")
+endif()
 
 #
 # Build docs
 #
+if(NOT REVNG_SDK_BUILD)
 configure_file(mkdocs.yml "${CMAKE_BINARY_DIR}" COPYONLY)
 set(HTML_DOCS_PATH "${CMAKE_CURRENT_BINARY_DIR}/share/doc/revng/html")
 find_program(MKDOCS NAMES mkdocs)
 
+if(MKDOCS)
 add_custom_command(
   OUTPUT share/doc/revng/html/404.html
   DEPENDS mkdocs.yml
@@ -425,10 +561,13 @@ add_custom_command(
     share/doc/revng/references/artifacts.md
   COMMAND env NO_MKDOCS_2_WARNING=1 ${MKDOCS} build --quiet --strict --site-dir
           mkdocs-output
-  COMMAND rm -rf "${HTML_DOCS_PATH}"
-  COMMAND mv -T mkdocs-output "${HTML_DOCS_PATH}"
+  COMMAND "${CMAKE_COMMAND}" -E rm -rf "${HTML_DOCS_PATH}"
+  COMMAND "${CMAKE_COMMAND}" -E rename mkdocs-output "${HTML_DOCS_PATH}"
   COMMENT "Generating mkdocs")
 add_custom_target(mkdocs ALL DEPENDS share/doc/revng/html/404.html)
+else()
+  message(STATUS "mkdocs not found; skipping HTML documentation")
+endif()
 
 #
 # Gather helper names
@@ -441,14 +580,24 @@ add_custom_command(
   DEPENDS copy_share ${HELPER_MODULE_LIST})
 add_custom_target(helper-list ALL
                   DEPENDS "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv")
+endif()
 
 #
 # Proceed to subdirectories
 #
-add_subdirectory(docs)
 add_subdirectory(include)
+if(REVNG_SDK_BUILD)
+  # Tuple-tree C++ generation names this dependency even when the npm package
+  # targets are intentionally outside the SDK build.
+  add_custom_target(generate-node_modules)
+endif()
 add_subdirectory(lib)
-add_subdirectory(python)
-add_subdirectory(tests)
-add_subdirectory(tools)
-add_subdirectory(typescript)
+if(REVNG_SDK_BUILD)
+  add_subdirectory(tests/library-sdk)
+else()
+  add_subdirectory(docs)
+  add_subdirectory(python)
+  add_subdirectory(tests)
+  add_subdirectory(tools)
+  add_subdirectory(typescript)
+endif()

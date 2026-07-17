@@ -20,10 +20,7 @@ async function initSqlite3(): Promise<Sqlite3Static> {
     if (window._sqlite3 !== undefined) {
         return window._sqlite3;
     } else {
-        const sqlite3 = await sqlite3InitModule({
-            print: console.log,
-            printErr: console.error,
-        });
+        const sqlite3 = await sqlite3InitModule();
         window._sqlite3 = sqlite3;
         return sqlite3;
     }

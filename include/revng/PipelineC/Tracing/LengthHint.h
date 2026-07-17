@@ -3,7 +3,7 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
-#ifdef __cplusplus
+#if defined(__cplusplus) && !defined(REVNG_PIPELINEC_C_ONLY)
 #include "revng/ADT/ConstexprString.h"
 
 extern "C++" {

@@ -90,7 +90,7 @@ public:
 
 template<>
 struct std::hash<const Kind> {
-  uint64_t operator()(const Kind &Kind) const {
+  size_t operator()(const Kind &Kind) const {
     return std::hash<Kind::ValueType>{}(Kind.Value);
   }
 };
@@ -236,7 +236,7 @@ public:
 
 template<>
 struct std::hash<const ObjectID> {
-  uint64_t operator()(const ObjectID &Obj) const {
+  size_t operator()(const ObjectID &Obj) const {
     return std::hash<decltype(Obj.Key)>{}(Obj.Key);
   }
 };

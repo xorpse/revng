@@ -4,6 +4,7 @@
 
 import faulthandler
 import re
+import sys
 from functools import wraps
 from pathlib import Path
 from threading import Lock
@@ -146,8 +147,10 @@ for header_path in header_paths:
         ffi.cdef(lines)
 
 
-LIBRARY_PATH = collect_one(ROOT, ["lib"], "librevngPipelineC.so")
-assert LIBRARY_PATH is not None, "librevngPipelineC.so not found"
+LIBRARY_SUFFIX = ".dylib" if sys.platform == "darwin" else ".so"
+LIBRARY_NAME = f"librevngPipelineC{LIBRARY_SUFFIX}"
+LIBRARY_PATH = collect_one(ROOT, ["lib"], LIBRARY_NAME)
+assert LIBRARY_PATH is not None, f"{LIBRARY_NAME} not found"
 
 ctypes_backend = CTypesBackend()
 

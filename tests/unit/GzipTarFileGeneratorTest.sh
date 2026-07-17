@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-TEMP_FILE=$(mktemp --tmpdir --suffix=.tar.gz tmp.revng.GzipTarFileGeneratorTest.XXXXXXXXXX)
+TEMP_FILE=$(mktemp -t revng.GzipTarFileGeneratorTest)
 trap 'rm -f -- "$TEMP_FILE"' EXIT
 
 "$1/test_gzip_tar_fileGenerator" foo foo2 bar bar2 > "$TEMP_FILE"
@@ -16,5 +16,5 @@ CONTENTS=$(tar -tf "$TEMP_FILE")
 grep -qF 'foo' <<< "$CONTENTS"
 grep -qF 'bar' <<< "$CONTENTS"
 
-[[ $(tar -xf "$TEMP_FILE" foo --to-stdout) = "foo2" ]]
-[[ $(tar -xf "$TEMP_FILE" bar --to-stdout) = "bar2" ]]
+[[ $(tar -xOf "$TEMP_FILE" foo) = "foo2" ]]
+[[ $(tar -xOf "$TEMP_FILE" bar) = "bar2" ]]

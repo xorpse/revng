@@ -4,10 +4,14 @@
 
 # Each add_filecheck_test call registers one ctest that invokes lit on a single
 # test file. REVNG_BUILD_DIR is exported so lit.cfg.py can resolve %root.
+find_program(LIT_EXECUTABLE NAMES llvm-lit lit REQUIRED)
+
 function(add_filecheck_test PATH)
   add_test(
     NAME "filecheck/${PATH}"
-    COMMAND lit -a "${CMAKE_SOURCE_DIR}/tests/filecheck/${PATH}"
+    COMMAND
+      "${CMAKE_COMMAND}" -E env "PATH=${LLVM_TOOLS_BINARY_DIR}:$ENV{PATH}"
+      "${LIT_EXECUTABLE}" -a "${CMAKE_SOURCE_DIR}/tests/filecheck/${PATH}"
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
   set_tests_properties(
     "filecheck/${PATH}" PROPERTIES LABELS "unit;filecheck" ENVIRONMENT

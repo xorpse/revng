@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Support/CBindingWrapping.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -20,6 +22,8 @@
 #include "llvm/Support/PluginLoader.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "revng/Lift/AbstractLifter.h"
+#include "revng/Loader/AddressSpaceLoader.h"
 #include "revng/Pipeline/AllRegistries.h"
 #include "revng/Pipeline/Container.h"
 #include "revng/Pipeline/Runner.h"
@@ -234,6 +238,254 @@ static rp_manager *_rp_manager_create(uint64_t pipeline_flags_count,
                                 true);
 }
 
+namespace {
+
+class CallbackAddressSpace final : public revng::loader::AbstractAddressSpace {
+private:
+  model::Architecture::Values Architecture;
+  std::optional<MetaAddress> EntryPoint;
+  std::vector<revng::loader::Mapping> Mappings;
+  std::vector<MetaAddress> ExtraCodeAddresses;
+
+public:
+  CallbackAddressSpace(model::Architecture::Values Architecture,
+                       std::optional<MetaAddress> EntryPoint,
+                       std::vector<revng::loader::Mapping> Mappings,
+                       std::vector<MetaAddress> ExtraCodeAddresses) :
+    Architecture(Architecture),
+    EntryPoint(EntryPoint),
+    Mappings(std::move(Mappings)),
+    ExtraCodeAddresses(std::move(ExtraCodeAddresses)) {}
+
+  model::Architecture::Values architecture() const override {
+    return Architecture;
+  }
+  std::optional<MetaAddress> entryPoint() const override { return EntryPoint; }
+  llvm::ArrayRef<revng::loader::Mapping> mappings() const override {
+    return Mappings;
+  }
+  llvm::ArrayRef<MetaAddress> extraCodeAddresses() const override {
+    return ExtraCodeAddresses;
+  }
+};
+
+llvm::Expected<CallbackAddressSpace>
+marshalAddressSpace(const rp_address_space_callbacks &Callbacks) {
+  if (Callbacks.architecture == nullptr or Callbacks.mapping_count == nullptr
+      or Callbacks.mapping_at == nullptr)
+    return revng::createError("incomplete address-space callback table");
+
+  const char *ArchitectureName = Callbacks.architecture(Callbacks.opaque);
+  if (ArchitectureName == nullptr)
+    return revng::createError("address-space architecture callback returned "
+                              "null");
+  auto Architecture = model::Architecture::fromName(ArchitectureName);
+  if (Architecture == model::Architecture::Invalid)
+    return revng::createError("unknown address-space architecture: "
+                              + llvm::StringRef(ArchitectureName));
+
+  std::optional<MetaAddress> EntryPoint;
+  if (Callbacks.entry_point != nullptr) {
+    if (const char *Value = Callbacks.entry_point(Callbacks.opaque)) {
+      EntryPoint = MetaAddress::fromString(Value);
+      if (EntryPoint->isInvalid())
+        return revng::createError("invalid address-space entry point");
+    }
+  }
+
+  std::vector<revng::loader::Mapping> Mappings;
+  const uint64_t MappingCount = Callbacks.mapping_count(Callbacks.opaque);
+  Mappings.reserve(MappingCount);
+  for (uint64_t I = 0; I < MappingCount; ++I) {
+    rp_address_space_mapping Input{};
+    if (not Callbacks.mapping_at(Callbacks.opaque, I, &Input))
+      return revng::createError("address-space mapping callback failed");
+    if (Input.start == nullptr)
+      return revng::createError("address-space mapping has no start address");
+    if (Input.contents_size != 0 and Input.contents == nullptr)
+      return revng::createError("address-space mapping has null contents");
+
+    MetaAddress Start = MetaAddress::fromString(Input.start);
+    if (Start.isInvalid())
+      return revng::createError("address-space mapping has invalid start "
+                                "address");
+    Mappings.push_back({ Start,
+                         Input.virtual_size,
+                         { Input.contents, size_t(Input.contents_size) },
+                         Input.readable,
+                         Input.writeable,
+                         Input.executable,
+                         Input.name == nullptr ? "" : Input.name });
+  }
+
+  std::vector<MetaAddress> ExtraCodeAddresses;
+  if (Callbacks.extra_code_address_count != nullptr) {
+    const uint64_t Count = Callbacks.extra_code_address_count(Callbacks.opaque);
+    if (Count != 0 and Callbacks.extra_code_address_at == nullptr)
+      return revng::createError("incomplete extra-code-address callbacks");
+    ExtraCodeAddresses.reserve(Count);
+    for (uint64_t I = 0; I < Count; ++I) {
+      const char *Value = Callbacks.extra_code_address_at(Callbacks.opaque, I);
+      if (Value == nullptr)
+        return revng::createError("extra code address callback returned null");
+      MetaAddress Address = MetaAddress::fromString(Value);
+      if (Address.isInvalid())
+        return revng::createError("invalid extra code address");
+      ExtraCodeAddresses.push_back(Address);
+    }
+  }
+
+  return CallbackAddressSpace(Architecture,
+                              EntryPoint,
+                              std::move(Mappings),
+                              std::move(ExtraCodeAddresses));
+}
+
+class CallbackLifter final : public revng::lift::ILifter {
+private:
+  rp_lifter_callbacks Callbacks;
+  const TupleTree<model::Binary> &Model;
+
+public:
+  CallbackLifter(rp_lifter_callbacks Callbacks,
+                 const TupleTree<model::Binary> &Model) :
+    Callbacks(Callbacks), Model(Model) {}
+
+  llvm::Error lift(const model::Binary &,
+                   const RawBinaryView &View,
+                   llvm::ArrayRef<MetaAddress> Entries,
+                   llvm::Module &Output) override {
+    std::string SerializedModel;
+    Model.serialize(SerializedModel);
+    std::vector<std::string> EntryStrings;
+    std::vector<const char *> EntryPointers;
+    EntryStrings.reserve(Entries.size());
+    EntryPointers.reserve(Entries.size());
+    for (MetaAddress Entry : Entries)
+      EntryStrings.push_back(Entry.toString());
+    for (const std::string &Entry : EntryStrings)
+      EntryPointers.push_back(Entry.c_str());
+
+    llvm::ArrayRef<uint8_t> Bytes = View.bytes();
+    const char *ErrorMessage = nullptr;
+    bool Success = Callbacks.lift(Callbacks.opaque,
+                                  SerializedModel.c_str(),
+                                  Bytes.data(),
+                                  Bytes.size(),
+                                  EntryPointers.data(),
+                                  EntryPointers.size(),
+                                  llvm::wrap(&Output),
+                                  &ErrorMessage);
+    if (Success)
+      return llvm::Error::success();
+    return revng::createError(ErrorMessage == nullptr ? "host lifter callback "
+                                                        "failed" :
+                                                        ErrorMessage);
+  }
+};
+
+} // namespace
+
+static rp_manager *
+_rp_manager_create_from_address_space(const rp_address_space_callbacks
+                                        *callbacks,
+                                      uint64_t pipeline_flags_count,
+                                      const char *pipeline_flags[],
+                                      const char *execution_directory,
+                                      rp_error *error) {
+  revng_check(callbacks != nullptr);
+
+  auto AddressSpace = marshalAddressSpace(*callbacks);
+  if (not AddressSpace) {
+    llvmErrorToRpError(AddressSpace.takeError(), error);
+    return nullptr;
+  }
+  auto Loaded = revng::loader::loadAddressSpace(*AddressSpace);
+  if (not Loaded) {
+    llvmErrorToRpError(Loaded.takeError(), error);
+    return nullptr;
+  }
+
+  std::unique_ptr<rp_manager> Manager(_rp_manager_create(pipeline_flags_count,
+                                                         pipeline_flags,
+                                                         execution_directory));
+  if (not Manager)
+    return nullptr;
+
+  auto LoadedModel = std::move(Loaded->Model);
+  auto &WritableModel = revng::getWritableModelFromContext(Manager->context());
+  WritableModel = std::move(LoadedModel);
+  llvm::StringRef Bytes(reinterpret_cast<const char *>(Loaded->Data.data()),
+                        Loaded->Data.size());
+  auto Buffer = llvm::MemoryBuffer::getMemBuffer(Bytes,
+                                                 "abstract-address-space",
+                                                 false);
+  pipeline::Step &Begin = *Manager->getRunner().begin();
+  auto Invalidations = Manager->deserializeContainer(Begin, "input", *Buffer);
+  if (not Invalidations) {
+    llvmErrorToRpError(Invalidations.takeError(), error);
+    return nullptr;
+  }
+  Manager->recalculateAllPossibleTargets();
+  return Manager.release();
+}
+
+static bool _rp_set_lifter(rp_manager *manager,
+                           const rp_lifter_callbacks *callbacks,
+                           rp_error *error) {
+  revng_check(manager != nullptr);
+  revng_check(callbacks != nullptr);
+  if (callbacks->lift == nullptr) {
+    llvmErrorToRpError(revng::createError("host lifter callback is null"),
+                       error);
+    return false;
+  }
+
+  rp_lifter_callbacks Copy = *callbacks;
+  const auto &Model = revng::getModelFromContext(manager->context());
+  revng::lift::LifterFactory Factory =
+    [Copy](const TupleTree<model::Binary> &FactoryModel) {
+      return std::make_unique<CallbackLifter>(Copy, FactoryModel);
+    };
+  llvm::Error
+    Result = revng::lift::LifterRegistry::setOverride(*Model,
+                                                      std::move(Factory));
+  if (Result) {
+    llvmErrorToRpError(std::move(Result), error);
+    return false;
+  }
+  return true;
+}
+
+static bool _rp_manager_set_lifter_backend(rp_manager *manager,
+                                           const char *name,
+                                           rp_error *error) {
+  revng_check(manager != nullptr);
+  revng_check(name != nullptr);
+
+  const std::string Name(name);
+  const auto &Model = revng::getModelFromContext(manager->context());
+  auto Probe = revng::lift::LifterRegistry::create(Name, Model);
+  if (not Probe) {
+    llvmErrorToRpError(Probe.takeError(), error);
+    return false;
+  }
+
+  revng::lift::LifterFactory Factory =
+    [Name](const TupleTree<model::Binary> &FactoryModel) {
+      return llvm::cantFail(revng::lift::LifterRegistry::create(Name,
+                                                                FactoryModel));
+    };
+  llvm::Error
+    Result = revng::lift::LifterRegistry::setOverride(*Model,
+                                                      std::move(Factory));
+  if (Result) {
+    llvmErrorToRpError(std::move(Result), error);
+    return false;
+  }
+  return true;
+}
+
 static bool _rp_manager_save(rp_manager *manager) {
   revng_check(manager != nullptr);
 
@@ -247,6 +499,8 @@ static bool _rp_manager_save(rp_manager *manager) {
 
 static void _rp_manager_destroy(rp_manager *manager) {
   revng_check(manager != nullptr);
+  const auto &Model = revng::getModelFromContext(manager->context());
+  revng::lift::LifterRegistry::clearOverride(*Model);
   delete manager;
 }
 

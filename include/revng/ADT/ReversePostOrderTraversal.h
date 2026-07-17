@@ -16,10 +16,23 @@ class ReversePostOrderTraversalExt {
   NodeVec Blocks; // Block list in normal RPO order
 
   void initialize(GraphT G, SetType &WhiteList) {
+#ifdef REVNG_STOCK_LLVM_COMPAT
+    auto Visit = [&](auto &Self, NodeRef Node) -> void {
+      if (not WhiteList.insert(Node).second)
+        return;
+      for (auto It = GT::child_begin(Node), End = GT::child_end(Node);
+           It != End;
+           ++It)
+        Self(Self, *It);
+      Blocks.push_back(Node);
+    };
+    Visit(Visit, G);
+#else
     using ExtIter = llvm::po_ext_iterator<GraphT, SetType, GT>;
     std::copy(ExtIter::begin(G, WhiteList),
               ExtIter::end(G, WhiteList),
               std::back_inserter(Blocks));
+#endif
   }
 
 public:

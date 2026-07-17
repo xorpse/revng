@@ -16,6 +16,29 @@
 #include "revng/Support/Error.h"
 #include "revng/TupleTree/TupleTreeCompatible.h"
 
+#ifdef __APPLE__
+// Darwin spells size_t as unsigned long while LLVM 16 only provides scalar
+// YAML traits for its distinct uint64_t typedef.
+template<>
+struct llvm::yaml::ScalarTraits<size_t> {
+  static void output(const size_t &Value, void *Context, raw_ostream &Output) {
+    uint64_t Temporary = Value;
+    ScalarTraits<uint64_t>::output(Temporary, Context, Output);
+  }
+
+  static StringRef input(StringRef Scalar, void *Context, size_t &Value) {
+    uint64_t Temporary = 0;
+    StringRef Error = ScalarTraits<uint64_t>::input(Scalar,
+                                                     Context,
+                                                     Temporary);
+    Value = Temporary;
+    return Error;
+  }
+
+  static QuotingType mustQuote(StringRef) { return QuotingType::None; }
+};
+#endif
+
 template<typename T>
 concept HasScalarTraits = llvm::yaml::has_ScalarTraits<T>::value;
 

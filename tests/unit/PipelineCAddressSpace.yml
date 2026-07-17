@@ -1,0 +1,18 @@
+Component: revng
+Containers:
+  - Name: input
+    Type: binary
+  - Name: root.bc.zstd
+    Type: llvm-container
+Branches:
+  - Steps:
+      - Name: initial
+      - Name: lift
+        Pipes:
+          - Type: lift
+            UsedContainers: [input, root.bc.zstd]
+        Artifacts:
+          Container: root.bc.zstd
+          Kind: root
+          SingleTargetFilename: lifted.ll
+          Docs: Reference lifter test artifact.

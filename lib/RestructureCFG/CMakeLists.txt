@@ -20,3 +20,7 @@ revng_add_analyses_library_internal(
 
 target_link_libraries(revngRestructureCFG revngScopeGraphUtils revngSupport
                       revngModel revngPipeline ${LLVM_LIBRARIES})
+
+# ScopeGraphGraphTraits.h includes generated Yield model headers.  Make that
+# generation ordering explicit for clean parallel builds.
+add_dependencies(revngRestructureCFG revngYield)

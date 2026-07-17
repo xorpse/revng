@@ -663,7 +663,7 @@ RecursiveCoroutine<bool> NamedTypedRegister::verify(VerifyHelper &VH) const {
     if (*MaybeTypeSize > RegisterSize)
       rc_return VH.fail("Object of " + ::toString(*MaybeTypeSize)
                           + "-byte type does not fit into a "
-                          + ::toString(RegisterSize) + "-byte register",
+                          + std::to_string(RegisterSize) + "-byte register",
                         Type());
   } else {
     // TODO: handle floating point register sizes properly.

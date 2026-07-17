@@ -25,11 +25,12 @@ namespace pipeline {
 
 class Global {
 private:
-  const char *ID;
+  std::string ID;
   std::string Name;
 
 public:
-  Global(const char *ID, llvm::StringRef Name) : ID(ID), Name(Name.str()) {}
+  Global(llvm::StringRef ID, llvm::StringRef Name) :
+    ID(ID.str()), Name(Name.str()) {}
   virtual ~Global() {}
   virtual Global &operator=(const Global &NewGlobal) = 0;
 
@@ -39,7 +40,7 @@ public:
   Global &operator=(Global &&) = default;
 
 public:
-  const char *getID() const { return ID; }
+  llvm::StringRef getID() const { return ID; }
   llvm::StringRef getName() const { return Name; }
 
 public:
@@ -82,23 +83,20 @@ class TupleTreeGlobal : public Global {
 private:
   TupleTree<Object> Value;
 
-  static const char &getID() {
-    static char ID;
-    return ID;
-  }
+  static llvm::StringRef getID() { return __PRETTY_FUNCTION__; }
 
 public:
   explicit TupleTreeGlobal(llvm::StringRef Name, TupleTree<Object> Value) :
-    Global(&getID(), Name), Value(std::move(Value)) {}
+    Global(getID(), Name), Value(std::move(Value)) {}
 
-  explicit TupleTreeGlobal(llvm::StringRef Name) : Global(&getID(), Name) {}
+  explicit TupleTreeGlobal(llvm::StringRef Name) : Global(getID(), Name) {}
   TupleTreeGlobal(const TupleTreeGlobal &Other) = default;
   TupleTreeGlobal(TupleTreeGlobal &&Other) = default;
   TupleTreeGlobal &operator=(const TupleTreeGlobal &Other) = default;
   TupleTreeGlobal &operator=(TupleTreeGlobal &&Other) = default;
   virtual ~TupleTreeGlobal() override = default;
 
-  static bool classof(const Global *T) { return T->getID() == &getID(); }
+  static bool classof(const Global *T) { return T->getID() == getID(); }
 
 public:
   llvm::Expected<std::unique_ptr<Global>>

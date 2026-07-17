@@ -11,7 +11,7 @@ using remove_constptr = std::remove_const_t<std::remove_pointer_t<T>>;
 
 template<typename T>
 inline constexpr bool isInteger() {
-  return anyOf<T, int, uint8_t, uint16_t, uint32_t, uint64_t>();
+  return anyOf<T, int, uint8_t, uint16_t, uint32_t, uint64_t, size_t>();
 }
 
 template<typename T>

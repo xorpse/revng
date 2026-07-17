@@ -72,7 +72,7 @@ template<typename Derived>
 class EnumerableContainer : public Container<Derived> {
   friend class ContainerEnumerator<Derived>;
 
-private:
+public:
   using StaticContainer = llvm::SmallVector<ContainerEnumerator<Derived> *, 4>;
   static StaticContainer &getRegisteredInspectors() {
     static StaticContainer List;

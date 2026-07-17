@@ -60,4 +60,6 @@ target_tuple_tree_generator(
   "MetaAddress")
 
 add_subdirectory(Pass)
-add_subdirectory(Importer)
+if(NOT REVNG_SDK_BUILD)
+  add_subdirectory(Importer)
+endif()

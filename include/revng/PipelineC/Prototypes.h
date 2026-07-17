@@ -135,6 +135,39 @@ LENGTH_HINT(rp_manager_create_from_string, 1, 0)
 LENGTH_HINT(rp_manager_create_from_string, 3, 2)
 
 /**
+ * Create a manager whose input model and bytes come from an already-loaded
+ * host address space. The standard configured pipeline paths are used.
+ * Callback-returned pointers only need to remain valid for the duration of
+ * this call.
+ */
+rp_manager * /*owning*/
+rp_manager_create_from_address_space(const rp_address_space_callbacks
+                                       *callbacks,
+                                     uint64_t pipeline_flags_count,
+                                     const char *pipeline_flags[],
+                                     const char *execution_directory,
+                                     rp_error *error);
+LENGTH_HINT(rp_manager_create_from_address_space, 2, 1)
+
+/**
+ * Install a lifter for this manager. The callback object and its opaque value
+ * must remain valid until rp_manager_destroy(). The output module is exposed
+ * through LLVM's stable C API as LLVMModuleRef.
+ */
+bool rp_set_lifter(rp_manager *manager,
+                   const rp_lifter_callbacks *callbacks,
+                   rp_error *error);
+
+/**
+ * Select a registered lifter backend by name for this manager. This is the
+ * convenient C API for built-in and plugin-provided backends; rp_set_lifter()
+ * remains available for callback implementations.
+ */
+bool rp_manager_set_lifter_backend(rp_manager *manager,
+                                   const char *name,
+                                   rp_error *error);
+
+/**
  * Delete the manager object and destroy all the resourced acquired by it.
  */
 void rp_manager_destroy(rp_manager *manager);

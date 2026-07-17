@@ -56,7 +56,7 @@ static TSGNode *makeNode(std::vector<TestStatement> &&Statements,
   return Graph.addNode(std::move(Statements));
 }
 
-static MetaAddress operator""_ma(const char *String, uint64_t Size) {
+static MetaAddress operator""_ma(const char *String, size_t Size) {
   return MetaAddress::fromString(llvm::StringRef{ String, Size });
 }
 

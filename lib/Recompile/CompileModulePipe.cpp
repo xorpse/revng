@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
@@ -94,7 +95,13 @@ static void compileModuleRunImpl(const model::Binary &Binary,
   M->getContext()
     .setDiagnosticHandler(std::make_unique<CustomDiagnosticHandler>());
 
-  {
+  const bool
+    NeedsLibTcgHelpers = llvm::any_of(*M, [](const Function &Function) {
+      return Function.isDeclaration()
+             and (Function.getName().starts_with("helper_")
+                  or FunctionTags::Helper.isTagOf(&Function));
+    });
+  if (NeedsLibTcgHelpers) {
     auto Architecture = Binary.Architecture();
     auto ArchName = model::Architecture::getQEMUName(Architecture).str();
 
@@ -109,9 +116,8 @@ static void compileModuleRunImpl(const model::Binary &Binary,
     auto HelpersModule = parseIR(M->getContext(), OptionalHelpers.value());
 
     linkModules(std::move(HelpersModule), *M, GlobalValue::InternalLinkage);
-
-    M->getFunction("main")->setLinkage(llvm::GlobalValue::ExternalLinkage);
   }
+  M->getFunction("main")->setLinkage(llvm::GlobalValue::ExternalLinkage);
 
   for (Function &F : *M)
     F.setSection("");

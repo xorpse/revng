@@ -8,5 +8,7 @@
 
 using IntVector = std::vector<unsigned int>;
 
+#ifndef __APPLE__
 template void
 IntVector::__push_back_slow_path<const unsigned int &>(const unsigned int &);
+#endif

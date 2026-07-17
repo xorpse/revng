@@ -21,7 +21,7 @@ target_link_libraries(
 
 target_include_directories(mockPipebox PUBLIC ${Python3_INCLUDE_DIRS})
 
-configure_file(pipebox.py "${CMAKE_CURRENT_BINARY_DIR}" COPYONLY)
+configure_file(pipebox.py "${CMAKE_CURRENT_BINARY_DIR}" @ONLY)
 
 #
 # Add tests that use libmockPipebox
@@ -29,7 +29,7 @@ configure_file(pipebox.py "${CMAKE_CURRENT_BINARY_DIR}" COPYONLY)
 revng_add_test(
   NAME pypeline-cpp-test COMMAND
   "${CMAKE_CURRENT_SOURCE_DIR}/python_cpp_test.py"
-  "${CMAKE_CURRENT_BINARY_DIR}/libmockPipebox.so")
+  "$<TARGET_FILE:mockPipebox>")
 set_tests_properties(
   pypeline-cpp-test
   PROPERTIES LABELS "pypeline;test" ENVIRONMENT
@@ -42,7 +42,7 @@ revng_add_test(
   "${CMAKE_CURRENT_SOURCE_DIR}/nanobind_test_annotations.sh"
   "${CMAKE_SOURCE_DIR}"
   -l
-  "${CMAKE_CURRENT_BINARY_DIR}/libmockPipebox.so")
+  "$<TARGET_FILE:mockPipebox>")
 set_tests_properties(
   pypeline-annotations-test
   PROPERTIES LABELS "pypeline;test" ENVIRONMENT

@@ -7,10 +7,9 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ModuleSlotTracker.h"
 
+#include "revng/Lift/PostLiftVerifyPass.h"
 #include "revng/Model/FunctionTags.h"
 #include "revng/Support/Assert.h"
-
-#include "PostLiftVerifyPass.h"
 
 using namespace llvm;
 

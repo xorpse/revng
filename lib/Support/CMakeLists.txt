@@ -2,6 +2,12 @@
 # This file is distributed under the MIT License. See LICENSE.md for details.
 #
 
+if(REVNG_STOCK_LLVM_COMPAT)
+  set(REVNG_PROGRESS_SOURCE)
+else()
+  set(REVNG_PROGRESS_SOURCE Progress.cpp)
+endif()
+
 revng_add_library_internal(
   revngSupport
   SHARED
@@ -23,7 +29,7 @@ revng_add_library_internal(
   ModuleStatistics.cpp
   OnQuit.cpp
   PathList.cpp
-  Progress.cpp
+  ${REVNG_PROGRESS_SOURCE}
   ResourceFinder.cpp
   Statistics.cpp
   Tag.cpp
@@ -63,8 +69,23 @@ llvm_map_components_to_libnames(
   X86CodeGen
   X86Desc
   X86Info)
-target_link_libraries(revngSupport z zstd ${LibArchive_LIBRARIES}
-                      ${LLVM_LIBRARIES})
+
+if(APPLE AND NOT REVNG_STOCK_LLVM_COMPAT)
+  llvm_map_components_to_libnames(
+    LLVM_NATIVE_LIBRARIES
+    AArch64AsmParser
+    AArch64CodeGen
+    AArch64Desc
+    AArch64Info)
+endif()
+
+if(APPLE AND REVNG_STOCK_LLVM_COMPAT)
+  set(LLVM_LIBRARIES LLVM)
+  set(LLVM_NATIVE_LIBRARIES)
+endif()
+
+target_link_libraries(revngSupport z zstd LibArchive::LibArchive
+                      ${LLVM_LIBRARIES} ${LLVM_NATIVE_LIBRARIES})
 
 target_include_directories(revngSupport INTERFACE $<INSTALL_INTERFACE:include/>)
 

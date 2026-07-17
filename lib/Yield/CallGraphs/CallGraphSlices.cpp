@@ -31,7 +31,7 @@ Graph makeTreeImpl(const Graph &Input, llvm::StringRef SlicePointLocation) {
   llvm::ReversePostOrderTraversal ReversePostOrder(NV{ *Entry });
   std::unordered_map<const Node *, size_t> Ranks;
   for (const Node *CurrentNode : ReversePostOrder) {
-    uint64_t &CurrentRank = Ranks[CurrentNode];
+    size_t &CurrentRank = Ranks[CurrentNode];
 
     CurrentRank = 0;
     for (auto Child : llvm::children<INV>(CurrentNode))

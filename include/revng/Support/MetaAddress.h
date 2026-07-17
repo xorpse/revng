@@ -1071,7 +1071,7 @@ namespace std {
 template<>
 struct hash<const MetaAddress> {
 public:
-  uint64_t operator()(const MetaAddress &Address) const {
+  size_t operator()(const MetaAddress &Address) const {
     return hash_value(Address);
   }
 };
@@ -1081,7 +1081,7 @@ struct hash<MetaAddress> : hash<const MetaAddress> {};
 template<>
 struct hash<const std::set<MetaAddress>> {
 public:
-  uint64_t operator()(const std::set<MetaAddress> &Addresses) const {
+  size_t operator()(const std::set<MetaAddress> &Addresses) const {
     return llvm::hash_combine_range(Addresses.begin(), Addresses.end());
   }
 };

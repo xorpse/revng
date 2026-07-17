@@ -7,9 +7,11 @@
 #include "llvm/Support/Error.h"
 
 #include "revng/BasicAnalyses/GeneratedCodeBasicInfo.h"
+#include "revng/Lift/AbstractLifter.h"
 #include "revng/Lift/IRAnnotators.h"
 #include "revng/Lift/Lift.h"
 #include "revng/Lift/LiftPipe.h"
+#include "revng/Lift/PostLiftVerifyPass.h"
 #include "revng/Model/LoadModelPass.h"
 #include "revng/Pipeline/AllRegistries.h"
 #include "revng/Pipes/FileContainer.h"
@@ -19,11 +21,14 @@
 #include "revng/Support/IRHelpers.h"
 #include "revng/Support/ResourceFinder.h"
 
-#include "PostLiftVerifyPass.h"
-
 using namespace llvm;
 using namespace pipeline;
 using namespace ::revng::pipes;
+
+// This marker is part of the backend-independent lifter contract and is not
+// present after `remove-newpc-calls`.
+RegisterIRHelper NewPCHelper("newpc");
+RegisterIRHelper JumpToSymbolMarker("jump_to_symbol");
 
 void Lift::run(ExecutionContext &EC,
                const BinaryFileContainer &SourceBinary,
@@ -175,7 +180,15 @@ llvm::Error checkPrecondition(const model::Binary &Model) {
 
 llvm::Error Lift::checkPrecondition(const pipeline::Context &Context) const {
   const auto &Model = *getModelFromContext(Context);
-  return lift::internal::checkPrecondition(Model);
+  llvm::Error BackendError = llvm::Error::success();
+  if (not lift::LifterRegistry::hasLifter(Model)) {
+    std::string Message = "no lifter backend is registered for ";
+    Message += model::Architecture::getName(Model.Architecture());
+    BackendError = revng::createError(Message);
+  }
+  return revng::joinErrors(std::move(BackendError),
+                           lift::internal::checkPrecondition(Model),
+                           RawBinaryView::checkPrecondition(Model));
 }
 
 static_assert(pipeline::HasInvalidate<Lift>);

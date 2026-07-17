@@ -96,7 +96,7 @@ inline llvm::hash_code hash_value(const BasicBlockID &BBID) {
 
 template<>
 struct std::hash<const BasicBlockID> {
-  uint64_t operator()(const BasicBlockID &BBID) const {
+  size_t operator()(const BasicBlockID &BBID) const {
     return hash_value(BBID);
   }
 };

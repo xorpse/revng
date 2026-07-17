@@ -9,10 +9,17 @@ dependencies = [
     "click==8.2.1",
     "jsonschema",
     "pyyaml",
-    "psuitl",
+    "psutil",
     "xdg",
     "starlette",
-    "uvicorn"
+    "uvicorn",
+    "aiohttp",
+    "click-option-group",
+    "hypercorn",
+    "psycopg[pool]",
+    "uvloop; sys_platform != 'win32'",
+    "websockets",
+    "zstandard; python_version < '3.14'"
 ]
 
 [project.scripts]

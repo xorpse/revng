@@ -184,7 +184,7 @@ public:
     const auto &Contracts = Invokable.getPipe().getContract();
     ContainerToTargetsMap Input = Target;
 
-    std::set<std::pair<std::string, unsigned>> ThisPipeOutputs;
+    std::set<std::pair<std::string, std::string>> ThisPipeOutputs;
     for (const auto &Contract : llvm::reverse(Contracts)) {
       Input = Contract
                 .deduceRequirements(Context,
@@ -198,7 +198,7 @@ public:
                     RunningContainersNames[ContainerIndex]
                       << " " << Kind->name().str() << " allowed");
           ThisPipeOutputs.insert({ RunningContainersNames[ContainerIndex],
-                                   Kind->id() });
+                                   Kind->name().str() });
         }
       }
     }
@@ -225,7 +225,7 @@ public:
 
       TargetList.erase_if([&](const class Target &T) -> bool {
         return not ThisPipeOutputs.contains({ ContainerName,
-                                              T.getKind().id() });
+                                              T.getKind().name().str() });
       });
 
       if (TargetList.empty())

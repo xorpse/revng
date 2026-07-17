@@ -33,9 +33,6 @@
 
 #include "InstructionTranslator.h"
 
-// This name is not present after `remove-newpc-calls`.
-RegisterIRHelper NewPCHelper("newpc");
-
 using namespace llvm;
 
 static Logger Log("instruction-translator");

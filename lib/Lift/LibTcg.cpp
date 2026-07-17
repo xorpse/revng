@@ -12,6 +12,7 @@ extern "C" {
 static std::string
 findLibTcgPath(const model::Architecture::Values Architecture) {
   llvm::StringRef ArchName = model::Architecture::getQEMUName(Architecture);
+  // libtcg is currently a Linux-only backend distributed as ELF DSOs.
   const std::string LibTcgName = "/lib/libtcg-" + ArchName.str() + ".so";
   auto OptionalLibTcg = revng::ResourceFinder.findFile(LibTcgName);
   revng_assert(OptionalLibTcg.has_value(), "Cannot find libtinycode");

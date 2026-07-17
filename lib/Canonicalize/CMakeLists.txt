@@ -31,4 +31,5 @@ target_link_libraries(
   revngPipes
   revngPTML
   revngLift
+  revngValueMaterializer
   ${LLVM_LIBRARIES})

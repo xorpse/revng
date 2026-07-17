@@ -26,7 +26,6 @@
 #include "SubGraph.h"
 
 // This name is not present after `lift`.
-RegisterIRHelper JumpToSymbolMarker("jump_to_symbol");
 
 // This name is not present after `lift`.
 RegisterIRHelper ExitTBMarker("exitTB");

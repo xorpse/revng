@@ -1,0 +1,15 @@
+[package]
+name = "revng-rust-inkwell-lifter-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+cxx = "1.0"
+inkwell = { version = "0.9", default-features = false, features = ["llvm16-0-no-llvm-linking", "target-x86"] }
+revng-sys = { path = "../../rust/revng-sys" }
+
+[build-dependencies]
+cc = "1.2"
+cxx-build = "1.0"
+revng-sdk = { path = "../../rust/revng-sdk" }

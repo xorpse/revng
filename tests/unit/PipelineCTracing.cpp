@@ -19,9 +19,8 @@ using namespace revng;
 struct Fixture {
 public:
   Fixture() {
+    std::string LibPath = REVNG_STRING_CONTAINER_LIBRARY;
     llvm::StringRef RootPath = getCurrentRoot();
-    std::string LibPath = joinPath(RootPath,
-                                   "lib/librevngStringContainerLibrary.so");
     std::string PipelinePath = joinPath(RootPath, "tests/pipeline/Tracing.yml");
 
     std::vector<std::string> ArgvStorage = { "",

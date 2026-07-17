@@ -105,7 +105,7 @@ OptionType<T, I> fromStringImpl(llvm::StringRef Value) {
   if constexpr (std::is_same_v<std::string, ReturnType>) {
     return Value.str();
   } else {
-    ReturnType Result;
+    ReturnType Result{};
     revng_assert(not Value.consumeInteger(10, Result));
     return Result;
   }

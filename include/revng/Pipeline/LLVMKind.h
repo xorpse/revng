@@ -161,10 +161,7 @@ public:
   }
 
 private:
-  static StaticContainer &getRegisteredInspectors() {
-    static StaticContainer Container;
-    return Container;
-  }
+  static StaticContainer &getRegisteredInspectors();
 };
 
 } // namespace pipeline

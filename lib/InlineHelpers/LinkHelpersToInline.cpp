@@ -30,6 +30,23 @@ static Register X("link-helpers-to-inline",
                   true);
 
 bool LinkHelpersToInlinePass::runOnModule(llvm::Module &M) {
+  // Collect the names of revng_inline helpers that lack a body in `M` and
+  // therefore need to be cloned from the per-architecture to-inline bitcode.
+  SmallVector<StringRef, 32> MissingBodies;
+  for (llvm::Function &F : M) {
+    if (F.isDeclaration() and F.getSection() == InlineHelpersSection) {
+      MissingBodies.push_back(F.getName());
+    }
+  }
+
+  // Nothing to link — every referenced revng_inline helper already has a
+  // body in `M`. Skip the expensive bitcode parse + clone + link in this case.
+  if (MissingBodies.empty()) {
+    return true;
+  }
+
+  // Helper-free lifters do not need QEMU architecture metadata. Only consult
+  // it after establishing that a QEMU helper body actually has to be linked.
   NamedMDNode *Node = M.getNamedMetadata(QemuArchitectureMD);
   revng_assert(Node != nullptr);
   revng_assert(Node->getNumOperands() > 0);
@@ -46,21 +63,6 @@ bool LinkHelpersToInlinePass::runOnModule(llvm::Module &M) {
   revng_assert(Strings.size() == 1,
                "QEMU helpers of multiple architectures were linked inside the "
                "module");
-
-  // Collect the names of revng_inline helpers that lack a body in `M` and
-  // therefore need to be cloned from the per-architecture to-inline bitcode.
-  SmallVector<StringRef, 32> MissingBodies;
-  for (llvm::Function &F : M) {
-    if (F.isDeclaration() and F.getSection() == InlineHelpersSection) {
-      MissingBodies.push_back(F.getName());
-    }
-  }
-
-  // Nothing to link — every referenced revng_inline helper already has a
-  // body in `M`. Skip the expensive bitcode parse + clone + link in this case.
-  if (MissingBodies.empty()) {
-    return true;
-  }
 
   // Given the architecture MD, retrieve the correct libtcg module and link
   // it into the main module.

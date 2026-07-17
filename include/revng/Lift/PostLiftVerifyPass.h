@@ -12,7 +12,5 @@ public:
 
 public:
   PostLiftVerifyPass() : llvm::ModulePass(ID) {}
-
-public:
   bool runOnModule(llvm::Module &M) final;
 };

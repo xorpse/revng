@@ -18,7 +18,7 @@ ROOT_NAME="$3"
 python -m jsonschema_to_typeddict \
     --output-path /dev/stdout \
     --root-name "$ROOT_NAME" \
-    <(yq . "$INPUT") | \
+    <(yq -o=json . "$INPUT") | \
 # The template used by the python package is a bit ugly and uses
 # `typing_extensions` to be compatible with old python versions. Use `sed` to
 # make the output look a bit nicer.

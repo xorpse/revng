@@ -35,6 +35,7 @@ public:
 
 public:
   uint64_t size() { return Data.size(); }
+  llvm::ArrayRef<uint8_t> bytes() const { return Data; }
 
 public:
   std::optional<llvm::ArrayRef<uint8_t>> getByOffset(uint64_t Offset,

@@ -29,6 +29,9 @@ dependencies = [
   # CLI: revng model compare
   "networkx",
   "grandiso",
+  # CLI: revng test-docs
+  "marko",
+  "jsonschema",
   # General dependencies
   "revng",
   "PyYAML",

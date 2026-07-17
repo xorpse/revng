@@ -33,6 +33,8 @@ static Logger Log("rua-analyses");
 namespace efa {
 
 template void RUAResults::dump<Logger>(Logger &, const char *) const;
+template void
+RUAResults::dump<std::ostream>(std::ostream &, const char *) const;
 
 struct CallSite {
   using Node = rua::Function::Node;

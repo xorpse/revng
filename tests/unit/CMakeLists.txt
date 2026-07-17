@@ -205,6 +205,149 @@ revng_add_test(NAME test_model COMMAND test_model)
 set_tests_properties(test_model PROPERTIES LABELS "unit")
 
 #
+# test_addressspaceloader
+#
+
+revng_add_test_executable(test_addressspaceloader
+                          "${SRC}/AddressSpaceLoader.cpp")
+target_compile_definitions(test_addressspaceloader
+                           PRIVATE "BOOST_TEST_DYN_LINK=1")
+target_link_libraries(test_addressspaceloader revngLoader revngUnitTestHelpers
+                      Boost::unit_test_framework ${LLVM_LIBRARIES})
+revng_add_test(NAME test_addressspaceloader COMMAND test_addressspaceloader)
+set_tests_properties(test_addressspaceloader PROPERTIES LABELS "unit")
+
+#
+# test_lifterregistry
+#
+
+revng_add_test_executable(test_lifterregistry "${SRC}/LifterRegistry.cpp")
+target_compile_definitions(test_lifterregistry PRIVATE "BOOST_TEST_DYN_LINK=1")
+if(NOT REVNG_BACKEND_LIBTCG)
+  target_compile_definitions(test_lifterregistry PRIVATE REVNG_TEST_NO_LIBTCG=1)
+endif()
+target_link_libraries(test_lifterregistry revngLift revngUnitTestHelpers
+                      Boost::unit_test_framework ${LLVM_LIBRARIES})
+revng_add_test(NAME test_lifterregistry COMMAND test_lifterregistry)
+set_tests_properties(test_lifterregistry PROPERTIES LABELS "unit")
+
+#
+# test_pipelinec_addressspace
+#
+
+revng_add_test_executable(test_pipelinec_addressspace
+                          "${SRC}/PipelineCAddressSpace.cpp")
+target_compile_definitions(
+  test_pipelinec_addressspace
+  PRIVATE "BOOST_TEST_DYN_LINK=1" "REVNG_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+target_link_libraries(
+  test_pipelinec_addressspace revngPipelineC revngLiftReference
+  revngUnitTestHelpers Boost::unit_test_framework ${LLVM_LIBRARIES})
+revng_add_test(NAME test_pipelinec_addressspace COMMAND
+               test_pipelinec_addressspace)
+set_tests_properties(test_pipelinec_addressspace PROPERTIES LABELS "unit")
+
+# A pure-C consumer of the installed-style Pipeline C API. Keep the reference
+# backend loaded even with --as-needed: its registration is constructor-based.
+add_executable(test_lifter_library_c
+               "${CMAKE_SOURCE_DIR}/examples/lifter-library.c")
+set_target_properties(test_lifter_library_c PROPERTIES LINKER_LANGUAGE CXX)
+target_compile_definitions(
+  test_lifter_library_c
+  PRIVATE "REVNG_TEST_PIPELINE=\"${SRC}/PipelineCAddressSpace.yml\"")
+if(APPLE)
+  target_link_options(
+    test_lifter_library_c
+    PRIVATE "-Wl,-needed_library,$<TARGET_FILE:revngLiftReference>")
+else()
+  target_link_options(test_lifter_library_c PRIVATE -Wl,--no-as-needed)
+endif()
+target_link_libraries(test_lifter_library_c revngPipelineC revngLiftReference)
+revng_add_test(NAME test_lifter_library_c_reference COMMAND
+               test_lifter_library_c reference-x86_64)
+set_tests_properties(test_lifter_library_c_reference PROPERTIES LABELS
+                                                                "integration")
+if(REVNG_BACKEND_LIBTCG)
+  revng_add_test(NAME test_lifter_library_c_libtcg COMMAND
+                 test_lifter_library_c libtcg)
+  set_tests_properties(test_lifter_library_c_libtcg PROPERTIES LABELS
+                                                               "integration")
+endif()
+
+#
+# test_referencelifter
+#
+
+revng_add_test_executable(test_referencelifter "${SRC}/ReferenceLifter.cpp")
+target_compile_definitions(test_referencelifter PRIVATE "BOOST_TEST_DYN_LINK=1")
+target_link_libraries(
+  test_referencelifter
+  revngLiftReference
+  revngLoader
+  revngInlineHelpers
+  revngUnitTestHelpers
+  Boost::unit_test_framework
+  ${LLVM_LIBRARIES})
+revng_add_test(NAME test_referencelifter COMMAND test_referencelifter)
+set_tests_properties(test_referencelifter PROPERTIES LABELS "unit")
+
+revng_add_test_executable(test_reference_end_to_end
+                          "${SRC}/ReferenceEndToEnd.cpp")
+target_compile_definitions(
+  test_reference_end_to_end PRIVATE "BOOST_TEST_DYN_LINK=1"
+                                    "REVNG_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+if(APPLE)
+  target_link_options(
+    test_reference_end_to_end
+    PRIVATE "-Wl,-needed_library,$<TARGET_FILE:revngLiftReference>")
+else()
+  target_link_options(test_reference_end_to_end PRIVATE -Wl,--no-as-needed)
+endif()
+target_link_libraries(
+  test_reference_end_to_end
+  revngPipelineC
+  revngPipebox
+  revngLiftReference
+  revngFunctionCallIdentification
+  revngHelperArgumentsAnalysis
+  revngTypeShrinking
+  revngValueMaterializer
+  revngUnitTestHelpers
+  Boost::unit_test_framework
+  ${LLVM_LIBRARIES})
+revng_add_test(NAME test_reference_end_to_end COMMAND test_reference_end_to_end)
+set_tests_properties(test_reference_end_to_end PROPERTIES LABELS "integration")
+
+if(REVNG_BACKEND_LIBTCG)
+  set(LIFTER_REPLAY_ELF "${CMAKE_CURRENT_BINARY_DIR}/lifter-replay.elf")
+  add_custom_command(
+    OUTPUT "${LIFTER_REPLAY_ELF}"
+    COMMAND "${CMAKE_C_COMPILER}" -nostdlib -no-pie -Wl,--build-id=none
+            -Wl,-e,_start "${SRC}/LifterReplay.s" -o "${LIFTER_REPLAY_ELF}"
+    DEPENDS "${SRC}/LifterReplay.s"
+    VERBATIM)
+  add_custom_target(lifter_replay_elf DEPENDS "${LIFTER_REPLAY_ELF}")
+
+  revng_add_test_executable(test_lifter_replay "${SRC}/LifterReplay.cpp")
+  add_dependencies(test_lifter_replay lifter_replay_elf)
+  target_compile_definitions(
+    test_lifter_replay
+    PRIVATE "BOOST_TEST_DYN_LINK=1"
+            "REVNG_LIFTER_REPLAY_ELF=\"${LIFTER_REPLAY_ELF}\"")
+  target_link_options(test_lifter_replay PRIVATE -Wl,--no-as-needed)
+  target_link_libraries(
+    test_lifter_replay
+    revngLift
+    revngLoader
+    revngModelImporterBinary
+    revngUnitTestHelpers
+    Boost::unit_test_framework
+    ${LLVM_LIBRARIES})
+  revng_add_test(NAME test_lifter_replay COMMAND test_lifter_replay)
+  set_tests_properties(test_lifter_replay PROPERTIES LABELS "integration")
+endif()
+
+#
 # test_instantiatepasses
 #
 
@@ -398,7 +541,8 @@ configure_file("${CMAKE_SOURCE_DIR}/tests/pipeline/CopyPipeTestPipeline.yml"
 
 revng_add_test_executable(test_pipeline_c_tracing "PipelineCTracing.cpp")
 target_compile_definitions(test_pipeline_c_tracing
-                           PRIVATE "BOOST_TEST_DYN_LINK=1")
+  PRIVATE "BOOST_TEST_DYN_LINK=1"
+          "REVNG_STRING_CONTAINER_LIBRARY=\"$<TARGET_FILE:revngStringContainerLibrary>\"")
 target_include_directories(test_pipeline_c_tracing
                            PRIVATE "${CMAKE_SOURCE_DIR}")
 target_link_libraries(test_pipeline_c_tracing revngPipelineC revngSupport
@@ -481,7 +625,7 @@ revng_add_test(
   COMMAND
   bash
   -c
-  "${CMAKE_BINARY_DIR}/bin/revng opt -S -early-type-shrinking -type-shrinking -instcombine ${SRC}/TypeShrinking.ll | FileCheck ${SRC}/TypeShrinking.ll"
+  "${CMAKE_BINARY_DIR}/bin/revng opt -S -early-type-shrinking -type-shrinking -instcombine ${SRC}/TypeShrinking.ll | ${LLVM_TOOLS_BINARY_DIR}/FileCheck ${SRC}/TypeShrinking.ll"
 )
 
 #

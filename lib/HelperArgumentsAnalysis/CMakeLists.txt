@@ -10,10 +10,13 @@ revng_add_analyses_library_internal(
   Context.cpp
   CPULoopExitPass.cpp
   CPUStateUsage.cpp
-  FixHelpers.cpp
   HelpersModuleToDeclarations.cpp
   SlimDownHelpersModule.cpp
   Value.cpp)
+
+if(REVNG_BACKEND_LIBTCG)
+  target_sources(revngHelperArgumentsAnalysis PRIVATE FixHelpers.cpp)
+endif()
 
 target_link_libraries(revngHelperArgumentsAnalysis revngLift revngSupport
                       ${LLVM_LIBRARIES})

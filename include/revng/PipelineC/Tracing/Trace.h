@@ -18,7 +18,7 @@ namespace detail {
 
 template<typename T>
 inline T toInt(const llvm::StringRef StrInt) {
-  T Result;
+  T Result{};
   revng_assert(!StrInt.getAsInteger(10, Result));
   return Result;
 }

@@ -13,6 +13,32 @@
 
 #include <memory>
 
+#ifdef __APPLE__
+// Recent Apple libc++ releases removed the internal spelling used by the
+// LLVM-16-derived implementation below. These annotations do not affect its
+// semantics.
+#pragma push_macro("_LIBCPP_INLINE_VISIBILITY")
+#pragma push_macro("_LIBCPP_TEMPLATE_VIS")
+#pragma push_macro("_LIBCPP_HIDE_FROM_ABI")
+#pragma push_macro("_LIBCPP_SUPPRESS_DEPRECATED_PUSH")
+#pragma push_macro("_LIBCPP_SUPPRESS_DEPRECATED_POP")
+#pragma push_macro("_LIBCPP_AVAILABILITY_THROW_BAD_ANY_CAST")
+#pragma push_macro("_NOEXCEPT")
+#undef _LIBCPP_INLINE_VISIBILITY
+#undef _LIBCPP_TEMPLATE_VIS
+#undef _LIBCPP_HIDE_FROM_ABI
+#undef _LIBCPP_SUPPRESS_DEPRECATED_PUSH
+#undef _LIBCPP_SUPPRESS_DEPRECATED_POP
+#undef _LIBCPP_AVAILABILITY_THROW_BAD_ANY_CAST
+#undef _NOEXCEPT
+#define _LIBCPP_INLINE_VISIBILITY
+#define _LIBCPP_TEMPLATE_VIS
+#define _LIBCPP_HIDE_FROM_ABI
+#define _LIBCPP_SUPPRESS_DEPRECATED_PUSH
+#define _LIBCPP_SUPPRESS_DEPRECATED_POP
+#define _LIBCPP_AVAILABILITY_THROW_BAD_ANY_CAST
+#define _NOEXCEPT noexcept
+#endif
 
 namespace revng {
 
@@ -688,6 +714,16 @@ any_cast(any<Trait> * __any) _NOEXCEPT
 
 template<typename Trait>
 using TraitfulAny = any<Trait>;
+
+#ifdef __APPLE__
+#pragma pop_macro("_NOEXCEPT")
+#pragma pop_macro("_LIBCPP_AVAILABILITY_THROW_BAD_ANY_CAST")
+#pragma pop_macro("_LIBCPP_SUPPRESS_DEPRECATED_POP")
+#pragma pop_macro("_LIBCPP_SUPPRESS_DEPRECATED_PUSH")
+#pragma pop_macro("_LIBCPP_HIDE_FROM_ABI")
+#pragma pop_macro("_LIBCPP_TEMPLATE_VIS")
+#pragma pop_macro("_LIBCPP_INLINE_VISIBILITY")
+#endif
 
 #pragma pop_macro("_VSTD")
 #undef __remove_cvref_t

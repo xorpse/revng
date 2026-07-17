@@ -258,11 +258,11 @@ revng::WindowsRoot::getRedirectionsFor(const std::string &LibraryName) {
 
     auto NormalizedString = Normalized.substr(Redirections.PrefixLength);
 
-    for (const auto &[Key, Value] :
-         Redirections.Map.find_prefixes(NormalizedString.str())) {
-      revng_log(Log, Value);
-      Result.push_back(Value);
-    }
+    for (const auto &[Key, Value] : Redirections.Map)
+      if (NormalizedString.starts_with(Key)) {
+        revng_log(Log, Value);
+        Result.push_back(Value);
+      }
 
     return Result;
   };
@@ -432,14 +432,23 @@ private:
   }
 
   static cppcoro::generator<StringRef> glob(StringRef Pattern) {
+#ifdef __APPLE__
+    glob_t GlobResults;
+    int Result = ::glob(Pattern.str().data(), 0, NULL, &GlobResults);
+#else
     glob64_t GlobResults;
     int Result = glob64(Pattern.str().data(), 0, NULL, &GlobResults);
+#endif
 
     switch (Result) {
     case 0:
       for (size_t I = 0; I < GlobResults.gl_pathc; ++I)
         co_yield StringRef(GlobResults.gl_pathv[I]);
+#ifdef __APPLE__
+      globfree(&GlobResults);
+#else
       globfree64(&GlobResults);
+#endif
       break;
 
     case GLOB_NOMATCH:

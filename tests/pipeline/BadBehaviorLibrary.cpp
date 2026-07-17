@@ -39,8 +39,7 @@ static void doCrash() {
   switch (Signal) {
   case SIGILL:
     printAndFlush("SIGILL via illegal instruction");
-    asm(".byte 0x0f, 0x0b");
-    break;
+    __builtin_trap();
   case SIGABRT:
     printAndFlush("SIGABRT via abort");
     sneaky_abort();

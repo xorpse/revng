@@ -16,11 +16,11 @@
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 
+#include "revng/ADT/SetOperations.h"
 #include "revng/Support/Debug.h"
 
 /// A generic way to compute a set of entry points to a graph such that any node
@@ -34,7 +34,7 @@ entryPoints(GraphType &&Graph) {
   std::vector<NodeRef> Result;
 
   // First, find all SCCs reachable from nodes without predecessors
-  std::set<const NodeRef> Visited;
+  std::set<NodeRef> Visited;
   for (const auto &Node : llvm::nodes(Graph)) {
     const auto &Preds = llvm::children<llvm::Inverse<NodeRef>>(Node);
     // If the Node has predecessors, skip it for now. It will be reached by a
@@ -348,8 +348,7 @@ nodesBetweenImpl(GraphT Source, GraphT Target) {
                                                                      Source);
 
   // Perform the set intersection between the forward and backward set nodes
-  SmallSetVector Result = llvm::set_intersection(ForwardDFSNodes,
-                                                 BackwardDFSNodes);
+  SmallSetVector Result = setIntersection(ForwardDFSNodes, BackwardDFSNodes);
 
   // Corner case handling
   if (not Result.empty()) {

@@ -33,6 +33,18 @@
 const char pipeline::LLVMContainer::ID = '0';
 using namespace pipeline;
 
+LLVMKind::StaticContainer &LLVMKind::getRegisteredInspectors() {
+  static StaticContainer Container;
+  return Container;
+}
+
+template<>
+EnumerableContainer<LLVMContainer>::StaticContainer &
+EnumerableContainer<LLVMContainer>::getRegisteredInspectors() {
+  static StaticContainer Container;
+  return Container;
+}
+
 std::unique_ptr<ContainerBase>
 LLVMContainer::cloneFiltered(const TargetsList &Targets) const {
   using InspectorT = LLVMKind;

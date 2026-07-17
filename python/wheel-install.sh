@@ -4,12 +4,16 @@
 #
 set -euo pipefail
 
-python -m pip install \
-       --quiet \
-       --compile \
-       --no-index \
-       --no-build-isolation \
-       --ignore-installed \
-       --no-deps \
-       --root "$DESTDIR" \
-       "$1"
+ARGS=(
+  --quiet
+  --compile
+  --no-index
+  --no-build-isolation
+  --ignore-installed
+  --no-deps
+  --prefix "$2"
+)
+if test -n "${DESTDIR:-}"; then
+  ARGS+=(--root "$DESTDIR")
+fi
+python -m pip install "${ARGS[@]}" "$1"
