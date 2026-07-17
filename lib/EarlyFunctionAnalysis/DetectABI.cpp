@@ -9,6 +9,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instruction.h"
@@ -19,7 +20,6 @@
 #include "revng/ABI/Definition.h"
 #include "revng/ABI/FunctionType/Layout.h"
 #include "revng/ADT/Queue.h"
-#include "revng/ADT/SetOperations.h"
 #include "revng/BasicAnalyses/GeneratedCodeBasicInfo.h"
 #include "revng/EarlyFunctionAnalysis/CFGAnalyzer.h"
 #include "revng/EarlyFunctionAnalysis/CallEdge.h"
@@ -1060,8 +1060,8 @@ Changes DetectABI::runAnalyses(MetaAddress EntryAddress,
   // the callee, there is at least a write onto this register.
   FunctionSummary &Summary = Oracle.getLocalFunction(EntryAddress);
   auto CalleeSavedRegs = computePreservedCSVs(Summary.ClobberedRegisters);
-  auto ActualCalleeSavedRegs = setIntersection(CalleeSavedRegs,
-                                               WrittenRegisters);
+  auto ActualCalleeSavedRegs = llvm::set_intersection(CalleeSavedRegs,
+                                                      WrittenRegisters);
 
   // Refine ABI analyses results by suppressing callee-saved and stack
   // pointer registers.

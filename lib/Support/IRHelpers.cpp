@@ -35,15 +35,6 @@
 
 using namespace llvm;
 
-#ifdef REVNG_STOCK_LLVM_COMPAT
-// Homebrew LLVM is built without LLVM_ENABLE_DUMP. Keep revng's diagnostic
-// call sites linkable by providing the conventional implementation locally.
-void llvm::Value::dump() const {
-  print(llvm::errs(), true);
-  llvm::errs() << "\n";
-}
-#endif
-
 void dumpModule(const Module *M, const char *Path) {
   std::ofstream FileStream(Path);
   raw_os_ostream Stream(FileStream);
@@ -310,10 +301,7 @@ void dumpUsers(llvm::Value *V) {
       InstructionUsers.push_back({ F, BB, I });
     } else {
       dbg << "  ";
-      std::string Buffer;
-      llvm::raw_string_ostream Stream(Buffer);
-      U->print(Stream);
-      dbg << Stream.str() << "\n";
+      U->dump();
     }
   }
 
@@ -333,10 +321,7 @@ void dumpUsers(llvm::Value *V) {
     }
 
     dbg << "    ";
-    std::string Buffer;
-    llvm::raw_string_ostream Stream(Buffer);
-    IU.I->print(Stream);
-    dbg << Stream.str() << "\n";
+    IU.I->dump();
   }
 }
 
@@ -822,28 +807,7 @@ cloneFiltered(llvm::Module &Module,
   FunctionsMetadata::backup(Module);
 
   revng::verify(&Module);
-#ifdef REVNG_STOCK_LLVM_COMPAT
-  auto Cloned = llvm::CloneModule(Module, Map, [&Action](const auto *GV) {
-    return Action(GV) == llvm::CloneAction::Clone;
-  });
-
-  // Stock LLVM only distinguishes cloning a definition from making it a
-  // declaration. Remove declarations for the fork's third (Omit) action.
-  llvm::SmallVector<llvm::GlobalValue *> ToErase;
-  for (const llvm::GlobalValue &GV : Module.global_values()) {
-    if (Action(&GV) != llvm::CloneAction::Omit)
-      continue;
-    auto *Mapped = llvm::dyn_cast_or_null<llvm::GlobalValue>(Map.lookup(&GV));
-    if (Mapped != nullptr)
-      ToErase.push_back(Mapped);
-  }
-  for (llvm::GlobalValue *GV : ToErase) {
-    revng_assert(GV->use_empty());
-    GV->eraseFromParent();
-  }
-#else
   auto Cloned = llvm::CloneModule(Module, Map, Action);
-#endif
 
   FunctionsMetadata::restore(*Cloned.get());
   FunctionsMetadata::dropBackup(Module);

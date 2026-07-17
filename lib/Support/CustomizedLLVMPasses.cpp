@@ -64,10 +64,8 @@ public:
     // replaces multi-byte memory accesses with many single-byte accesses,
     // which is detrimental for information we need to recover about
     // memory accesses in the analyzed binary program.
-#ifndef REVNG_STOCK_LLVM_COMPAT
     bool OriginalSROANoArrays = SROANoArrays;
     SROANoArrays = true;
-#endif
 
     FunctionPassManager FPM;
     FPM.addPass(SROAPass(SROAOptions::PreserveCFG));
@@ -79,9 +77,7 @@ public:
 
     FPM.run(F, FAM);
 
-#ifndef REVNG_STOCK_LLVM_COMPAT
     SROANoArrays = OriginalSROANoArrays;
-#endif
     return true;
   }
 };
@@ -108,16 +104,12 @@ public:
     // because it replaces multi-byte memory accesses with many single-byte
     // accesses, which is detrimental for information we need to recover about
     // memory accesses in the analyzed binary program.
-#ifndef REVNG_STOCK_LLVM_COMPAT
     unsigned OriginalMaxArraySize = MaxArraySize;
     MaxArraySize = 0;
-#endif
 
     InstructionCombiningPass::runOnFunction(F);
 
-#ifndef REVNG_STOCK_LLVM_COMPAT
     MaxArraySize = OriginalMaxArraySize;
-#endif
     return true;
   }
 };

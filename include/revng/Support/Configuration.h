@@ -4,9 +4,10 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
-#include <map>
 #include <string>
 #include <vector>
+
+#include "llvm/ADT/RadixTree.h"
 
 #include "revng/Model/Architecture.h"
 #include "revng/Model/OperatingSystem.h"
@@ -55,7 +56,7 @@ public:
 };
 
 struct WindowsLibraryMap {
-  std::map<std::string, std::string> Map;
+  llvm::RadixTree<std::string, std::string> Map;
 
   /// v2 and v4 strip the first 4 bytes (`api-`)
   unsigned PrefixLength = 0;

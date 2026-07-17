@@ -16,11 +16,11 @@
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 
-#include "revng/ADT/SetOperations.h"
 #include "revng/Support/Debug.h"
 
 /// A generic way to compute a set of entry points to a graph such that any node
@@ -348,7 +348,8 @@ nodesBetweenImpl(GraphT Source, GraphT Target) {
                                                                      Source);
 
   // Perform the set intersection between the forward and backward set nodes
-  SmallSetVector Result = setIntersection(ForwardDFSNodes, BackwardDFSNodes);
+  SmallSetVector Result = llvm::set_intersection(ForwardDFSNodes,
+                                                 BackwardDFSNodes);
 
   // Corner case handling
   if (not Result.empty()) {

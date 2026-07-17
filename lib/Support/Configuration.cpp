@@ -258,11 +258,11 @@ revng::WindowsRoot::getRedirectionsFor(const std::string &LibraryName) {
 
     auto NormalizedString = Normalized.substr(Redirections.PrefixLength);
 
-    for (const auto &[Key, Value] : Redirections.Map)
-      if (NormalizedString.starts_with(Key)) {
-        revng_log(Log, Value);
-        Result.push_back(Value);
-      }
+    for (const auto &[Key, Value] :
+         Redirections.Map.find_prefixes(NormalizedString.str())) {
+      revng_log(Log, Value);
+      Result.push_back(Value);
+    }
 
     return Result;
   };

@@ -5,9 +5,7 @@
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/PassRegistry.h"
-#ifndef REVNG_STOCK_LLVM_COMPAT
 #include "llvm/Support/DebugInfoPreservation.h"
-#endif
 #include "llvm/Support/Process.h"
 #include "llvm/Support/TargetSelect.h"
 
@@ -69,17 +67,13 @@ revng::InitRevng::InitRevng(int &Argc,
 
   // Force-enable `--enable-strict-debug-information-preservation-style` for
   // revng binaries even if it wasn't specified.
-#ifndef REVNG_STOCK_LLVM_COMPAT
   llvm::EnableStrictDebugInformationPreservationStyle.setInitialValue(true);
-#endif
 
   using namespace llvm;
   StringMap<cl::Option *> &Options(cl::getRegisteredOptions());
 
-#ifndef REVNG_STOCK_LLVM_COMPAT
   const char *OptionName = "emit-hex-constant-literals-from";
   getOption<uint64_t>(Options, OptionName)->setInitialValue(4096);
-#endif
 }
 
 revng::InitRevng::~InitRevng() {

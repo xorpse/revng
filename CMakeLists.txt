@@ -41,18 +41,6 @@ option(
   "Install the LLVM/Clang/MLIR dylibs needed by a relocatable macOS package"
   ${REVNG_SDK_BUILD_DEFAULT})
 
-if(APPLE AND REVNG_SDK_BUILD)
-  set(REVNG_STOCK_LLVM_COMPAT_DEFAULT ON)
-else()
-  set(REVNG_STOCK_LLVM_COMPAT_DEFAULT OFF)
-endif()
-option(
-  REVNG_STOCK_LLVM_COMPAT
-  "Use the reduced feature set available in an unpatched LLVM on macOS"
-  ${REVNG_STOCK_LLVM_COMPAT_DEFAULT})
-if(REVNG_STOCK_LLVM_COMPAT)
-  add_compile_definitions(REVNG_STOCK_LLVM_COMPAT)
-endif()
 if(APPLE)
   message(STATUS "Native macOS support is experimental; building without libtcg")
 endif()
@@ -164,22 +152,6 @@ endif()
 # Link LLVM
 #
 find_package(LLVM REQUIRED CONFIG)
-if(APPLE AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 21)
-  # Apple Clang 21 treats a comparison through this dependent pointer as a
-  # template-id while parsing LLVM 16. Keep the compatibility copy in the
-  # generated include tree; never modify the installed Homebrew headers.
-  list(GET LLVM_INCLUDE_DIRS 0 LLVM_PRIMARY_INCLUDE_DIR)
-  set(DOMTREE_HEADER
-      "${LLVM_PRIMARY_INCLUDE_DIR}/llvm/Support/GenericDomTreeConstruction.h")
-  file(READ "${DOMTREE_HEADER}" DOMTREE_HEADER_CONTENTS)
-  string(REPLACE "if (VInfo->Parent < LastLinked)"
-                 "if ((VInfo->Parent) < LastLinked)"
-                 DOMTREE_HEADER_CONTENTS "${DOMTREE_HEADER_CONTENTS}")
-  file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/include/llvm/Support")
-  file(WRITE
-       "${CMAKE_BINARY_DIR}/include/llvm/Support/GenericDomTreeConstruction.h"
-       "${DOMTREE_HEADER_CONTENTS}")
-endif()
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 link_directories(${LLVM_LIBRARY_DIRS})
@@ -199,12 +171,6 @@ llvm_map_components_to_libnames(
   CodeGen
   Passes
   TargetParser)
-if(APPLE AND REVNG_STOCK_LLVM_COMPAT)
-  # A single shared LLVM instance is required: command-line registries and
-  # other LLVM-managed globals cross revng dylib boundaries.
-  set(LLVM_LIBRARIES LLVM)
-endif()
-
 # MLIR CMake stuff
 find_package(MLIR REQUIRED CONFIG)
 include_directories(${MLIR_INCLUDE_DIRS})

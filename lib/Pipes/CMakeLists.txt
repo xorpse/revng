@@ -16,9 +16,6 @@ revng_add_library_internal(
   DebugInfoHelpers.cpp)
 
 llvm_map_components_to_libnames(LLVM_LIBRARIES Core MC Support)
-if(APPLE AND REVNG_STOCK_LLVM_COMPAT)
-  set(LLVM_LIBRARIES LLVM)
-endif()
 target_link_libraries(revngPipes revngPipeline revngModel revngSupport
                       revngStorage ${LLVM_LIBRARIES})
 

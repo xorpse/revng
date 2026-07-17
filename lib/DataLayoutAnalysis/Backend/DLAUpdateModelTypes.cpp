@@ -43,6 +43,8 @@ using llvm::dyn_cast;
 static Logger Log("dla-update-model-funcs");
 static Logger ModelLog("dla-dump-model-with-funcs");
 
+// getNameOrAsOperand() is intentionally unavailable when LLVM headers see
+// NDEBUG. Keep diagnostics usable in Release builds through the public API.
 static std::string nameOrOperand(const llvm::Value &Value) {
   if (Value.hasName())
     return Value.getName().str();
