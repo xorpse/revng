@@ -126,7 +126,7 @@ function(python_wheel)
 
   add_custom_command(
     OUTPUT "${CMAKE_BINARY_DIR}/${WHEEL_OUTPUT_NAME}"
-    COMMAND python -m build --no-isolation --wheel --outdir
+    COMMAND "${Python3_EXECUTABLE}" -m build --no-isolation --wheel --outdir
             "${CMAKE_BINARY_DIR}" &> /dev/null
     DEPENDS
       "${CMAKE_BINARY_DIR}/build-wheel/${PYTHON_WHEEL_NAME}/pyproject.toml"
@@ -151,8 +151,15 @@ function(python_wheel)
   install(FILES "${CMAKE_BINARY_DIR}/${WHEEL_OUTPUT_NAME}"
           DESTINATION "${CMAKE_INSTALL_PREFIX}/share/python")
   install(
-    CODE "execute_process(COMMAND \"${CMAKE_CURRENT_SOURCE_DIR}/wheel-install.sh\" \
-\"${CMAKE_BINARY_DIR}/${WHEEL_OUTPUT_NAME}\" \"${CMAKE_INSTALL_PREFIX}\")")
+    CODE "
+execute_process(
+  COMMAND \"${CMAKE_CURRENT_SOURCE_DIR}/wheel-install.sh\"
+\"${CMAKE_BINARY_DIR}/${WHEEL_OUTPUT_NAME}\" \"${CMAKE_INSTALL_PREFIX}\" \
+\"${Python3_EXECUTABLE}\" \"${PYTHON_INSTALL_PATH}\"
+  RESULT_VARIABLE REVNG_WHEEL_INSTALL_RESULT)
+if(NOT REVNG_WHEEL_INSTALL_RESULT EQUAL 0)
+  message(FATAL_ERROR \"Failed to install ${PYTHON_WHEEL_NAME} wheel\")
+endif()")
 endfunction()
 
 #

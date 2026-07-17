@@ -22,6 +22,6 @@ reference and libtcg backends registered in the same process.
 The wrapped `LLVMModuleRef` remains owned by PipelineC. It is placed in
 `ManuallyDrop` so Inkwell cannot dispose it when the callback returns.
 
-Native macOS AArch64 support is experimental and uses Homebrew LLVM 16. It
-supports the `inkwell` and `reference-x86_64` backends. libtcg remains
+Native macOS AArch64 support is experimental and uses revng's pinned LLVM/MLIR
+fork. It supports the `inkwell` and `reference-x86_64` backends. libtcg remains
 Linux-only and is never included in a macOS SDK manifest.

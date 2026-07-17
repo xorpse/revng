@@ -17,6 +17,10 @@ python sources/revng/scripts/generate-revng-sdk-manifest.py \
   --output revng-sdk.json
 ```
 
+For a complete standalone Linux x86-64 source build, including the pinned
+LLVM/MLIR, nanobind, and QEMU/libtcg dependencies, follow
+[`../docs/linux-sdk.md`](../docs/linux-sdk.md).
+
 Consumers set either `REVNG_SDK_MANIFEST=/path/to/revng-sdk.json` or
 `REVNG_SDK=/path/to/sdk-directory`. All paths stored in the descriptor are
 relative to the descriptor, so the described directory tree can be moved as a
