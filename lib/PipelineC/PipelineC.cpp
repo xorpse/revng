@@ -25,6 +25,7 @@
 #include "revng/ABI/DefaultFunctionPrototype.h"
 #include "revng/Lift/AbstractLifter.h"
 #include "revng/Loader/AddressSpaceLoader.h"
+#include "revng/Model/PrimitiveKind.h"
 #include "revng/Pipeline/AllRegistries.h"
 #include "revng/Pipeline/Container.h"
 #include "revng/Pipeline/Runner.h"
@@ -496,6 +497,137 @@ static bool _rp_manager_set_lifter_backend(rp_manager *manager,
     llvmErrorToRpError(std::move(Result), error);
     return false;
   }
+  return true;
+}
+
+static llvm::Expected<model::UpcastableType>
+marshalPrimitiveType(const rp_primitive_type &Input, bool AllowVoid) {
+  using PK = model::PrimitiveKind::Values;
+  PK Kind = model::PrimitiveKind::Invalid;
+  switch (Input.kind) {
+  case RP_PRIMITIVE_KIND_VOID:
+    Kind = model::PrimitiveKind::Void;
+    break;
+  case RP_PRIMITIVE_KIND_GENERIC:
+    Kind = model::PrimitiveKind::Generic;
+    break;
+  case RP_PRIMITIVE_KIND_POINTER_OR_NUMBER:
+    Kind = model::PrimitiveKind::PointerOrNumber;
+    break;
+  case RP_PRIMITIVE_KIND_NUMBER:
+    Kind = model::PrimitiveKind::Number;
+    break;
+  case RP_PRIMITIVE_KIND_UNSIGNED:
+    Kind = model::PrimitiveKind::Unsigned;
+    break;
+  case RP_PRIMITIVE_KIND_SIGNED:
+    Kind = model::PrimitiveKind::Signed;
+    break;
+  case RP_PRIMITIVE_KIND_FLOAT:
+    Kind = model::PrimitiveKind::Float;
+    break;
+  default:
+    return revng::createError("invalid primitive kind");
+  }
+
+  if (Kind == model::PrimitiveKind::Void) {
+    if (not AllowVoid or Input.size != 0)
+      return revng::createError("void is not valid in this position");
+    return model::PrimitiveType::makeVoid();
+  }
+
+  const bool GenericSize = Input.size == 1 or Input.size == 2
+                           or Input.size == 4 or Input.size == 8
+                           or Input.size == 16;
+  const bool FloatSize = Input.size == 2 or Input.size == 4
+                         or Input.size == 8 or Input.size == 10
+                         or Input.size == 12 or Input.size == 16;
+  if ((Kind == model::PrimitiveKind::Float and not FloatSize)
+      or (Kind != model::PrimitiveKind::Float and not GenericSize))
+    return revng::createError("invalid primitive size");
+  return model::PrimitiveType::make(Kind, Input.size);
+}
+
+static bool
+_rp_manager_set_cabi_prototype(rp_manager *manager,
+                               const char *address,
+                               const char *abi,
+                               const char *function_name,
+                               uint64_t arguments_count,
+                               const rp_cabi_argument arguments[],
+                               const rp_primitive_type *return_type,
+                               rp_error *error) {
+  revng_check(manager != nullptr);
+  revng_check(address != nullptr);
+  revng_check(abi != nullptr);
+  revng_check(function_name != nullptr);
+  if (arguments_count != 0 and arguments == nullptr) {
+    llvmErrorToRpError(revng::createError("null C ABI argument array"), error);
+    return false;
+  }
+
+  MetaAddress Address = MetaAddress::fromString(address);
+  if (Address.isInvalid()) {
+    llvmErrorToRpError(revng::createError("invalid function address"), error);
+    return false;
+  }
+  model::ABI::Values ABI = model::ABI::fromName(abi);
+  if (ABI == model::ABI::Invalid) {
+    llvmErrorToRpError(revng::createError("invalid ABI name"), error);
+    return false;
+  }
+
+  std::vector<model::UpcastableType> ArgumentTypes;
+  ArgumentTypes.reserve(arguments_count);
+  for (uint64_t I = 0; I < arguments_count; ++I) {
+    if (arguments[I].name == nullptr) {
+      llvmErrorToRpError(revng::createError("null C ABI argument name"), error);
+      return false;
+    }
+    auto Type = marshalPrimitiveType(arguments[I].type, false);
+    if (not Type) {
+      llvmErrorToRpError(Type.takeError(), error);
+      return false;
+    }
+    ArgumentTypes.push_back(std::move(*Type));
+  }
+  std::optional<model::UpcastableType> ReturnType;
+  if (return_type != nullptr) {
+    const bool IsVoid = return_type->kind == RP_PRIMITIVE_KIND_VOID;
+    auto Type = marshalPrimitiveType(*return_type, true);
+    if (not Type) {
+      llvmErrorToRpError(Type.takeError(), error);
+      return false;
+    }
+    if (not IsVoid)
+      ReturnType.emplace(std::move(*Type));
+  }
+
+  auto &Model = revng::getWritableModelFromContext(manager->context());
+  auto Function = Model->Functions().find(Address);
+  if (Function == Model->Functions().end()) {
+    llvmErrorToRpError(revng::createError("function address is not known"),
+                       error);
+    return false;
+  }
+  if (model::ABI::getArchitecture(ABI) != Model->Architecture()) {
+    llvmErrorToRpError(revng::createError("ABI architecture does not match "
+                                          "the address space"),
+                       error);
+    return false;
+  }
+
+  auto &&[Prototype, PrototypeType] = Model->makeCABIFunctionDefinition();
+  Prototype.ABI() = ABI;
+  for (uint64_t I = 0; I < arguments_count; ++I) {
+    auto &Argument = Prototype.addArgument(std::move(ArgumentTypes[I]));
+    Argument.Name() = arguments[I].name;
+  }
+  if (ReturnType.has_value())
+    Prototype.ReturnType() = std::move(*ReturnType);
+  Function->Name() = function_name;
+  Function->Prototype() = std::move(PrototypeType);
+  manager->recalculateAllPossibleTargets();
   return true;
 }
 

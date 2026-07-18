@@ -13,7 +13,7 @@
 namespace {
 
 struct AddressSpace {
-  std::array<uint8_t, 2> Bytes = { 0x90, 0xc3 };
+  std::array<uint8_t, 5> Bytes = { 0x89, 0xf8, 0x01, 0xf0, 0xc3 };
   std::string Entry = "0x400000:Code_x86_64";
 };
 
@@ -31,7 +31,7 @@ bool mappingAt(void *Opaque, uint64_t Index, rp_address_space_mapping *Output) {
     return false;
   auto &Space = *static_cast<AddressSpace *>(Opaque);
   *Output = { Space.Entry.c_str(),
-              4,
+              Space.Bytes.size(),
               Space.Bytes.data(),
               Space.Bytes.size(),
               true,
@@ -84,6 +84,16 @@ BOOST_AUTO_TEST_CASE(IsolateThroughEmitC) {
   if (Manager == nullptr)
     printError(Error.get());
   BOOST_REQUIRE(Manager != nullptr);
+  const rp_primitive_type I32{ RP_PRIMITIVE_KIND_SIGNED, 4 };
+  const rp_cabi_argument AddArguments[] = { { "a", I32 }, { "b", I32 } };
+  BOOST_REQUIRE(rp_manager_set_cabi_prototype(Manager.get(),
+                                              Space.Entry.c_str(),
+                                              "SystemV_x86_64",
+                                              "add",
+                                              2,
+                                              AddArguments,
+                                              &I32,
+                                              Error.get()));
   BOOST_REQUIRE(rp_manager_set_lifter_backend(Manager.get(),
                                               "reference-x86_64",
                                               Error.get()));

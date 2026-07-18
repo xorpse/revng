@@ -168,6 +168,21 @@ bool rp_manager_set_lifter_backend(rp_manager *manager,
                                    rp_error *error);
 
 /**
+ * Assign a C ABI prototype made of primitive types to a known function.
+ * Sizes are expressed in bytes; a NULL return_type means void. This compact
+ * interface is intended for embedding applications that already know a simple
+ * native signature without requiring them to construct revng's C++ model.
+ */
+bool rp_manager_set_cabi_prototype(rp_manager *manager,
+                                   const char *address,
+                                   const char *abi,
+                                   const char *function_name,
+                                   uint64_t arguments_count,
+                                   const rp_cabi_argument arguments[],
+                                   const rp_primitive_type *return_type,
+                                   rp_error *error);
+
+/**
  * Delete the manager object and destroy all the resourced acquired by it.
  */
 void rp_manager_destroy(rp_manager *manager);

@@ -50,6 +50,26 @@ typedef struct rp_lifter_callbacks {
                const char **error_message);
 } rp_lifter_callbacks;
 
+typedef enum rp_primitive_kind {
+  RP_PRIMITIVE_KIND_VOID = 0,
+  RP_PRIMITIVE_KIND_GENERIC,
+  RP_PRIMITIVE_KIND_POINTER_OR_NUMBER,
+  RP_PRIMITIVE_KIND_NUMBER,
+  RP_PRIMITIVE_KIND_UNSIGNED,
+  RP_PRIMITIVE_KIND_SIGNED,
+  RP_PRIMITIVE_KIND_FLOAT,
+} rp_primitive_kind;
+
+typedef struct rp_primitive_type {
+  rp_primitive_kind kind;
+  uint64_t size;
+} rp_primitive_type;
+
+typedef struct rp_cabi_argument {
+  const char *name;
+  rp_primitive_type type;
+} rp_cabi_argument;
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

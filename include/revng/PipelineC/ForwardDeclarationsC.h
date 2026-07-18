@@ -26,5 +26,7 @@ typedef struct rp_container_targets_map rp_container_targets_map;
 typedef struct rp_analyses_list rp_analyses_list;
 typedef struct rp_address_space_callbacks rp_address_space_callbacks;
 typedef struct rp_lifter_callbacks rp_lifter_callbacks;
+typedef struct rp_primitive_type rp_primitive_type;
+typedef struct rp_cabi_argument rp_cabi_argument;
 
 // NOLINTEND

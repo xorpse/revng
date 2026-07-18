@@ -23,7 +23,7 @@ namespace {
 
 class TestAddressSpace final : public revng::loader::AbstractAddressSpace {
 private:
-  std::array<uint8_t, 2> Bytes = { 0x90, 0xc3 };
+  std::array<uint8_t, 5> Bytes = { 0x89, 0xf8, 0x01, 0xf0, 0xc3 };
   std::array<revng::loader::Mapping, 1> Mappings;
 
 public:
@@ -75,6 +75,9 @@ BOOST_AUTO_TEST_CASE(EmitHelperFreeContractModule) {
   BOOST_CHECK(Root->size() >= 7U);
   BOOST_CHECK(Module.getGlobalVariable("_rsp") != nullptr);
   BOOST_CHECK(Module.getGlobalVariable("_rip") != nullptr);
+  BOOST_CHECK(Module.getGlobalVariable("_rax") != nullptr);
+  BOOST_CHECK(Module.getGlobalVariable("_rdi") != nullptr);
+  BOOST_CHECK(Module.getGlobalVariable("_rsi") != nullptr);
 
   for (const llvm::Function &Function : Module)
     BOOST_CHECK(not Function.getName().starts_with("helper_"));

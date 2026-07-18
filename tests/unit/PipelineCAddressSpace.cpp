@@ -112,6 +112,24 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
   BOOST_CHECK(Model->Segments().size() == 1U);
   BOOST_CHECK(Model->DefaultABI() == model::ABI::SystemV_x86_64);
 
+  const rp_primitive_type I32{ RP_PRIMITIVE_KIND_SIGNED, 4 };
+  const rp_cabi_argument AddArguments[] = { { "a", I32 }, { "b", I32 } };
+  BOOST_REQUIRE(rp_manager_set_cabi_prototype(Manager,
+                                              State.Start.c_str(),
+                                              "SystemV_x86_64",
+                                              "add",
+                                              2,
+                                              AddArguments,
+                                              &I32,
+                                              &Error));
+  const model::Function &EntryFunction =
+    Model->Functions().at(MetaAddress::fromString(State.Start));
+  BOOST_CHECK(EntryFunction.Name() == "add");
+  auto *Prototype = EntryFunction.Prototype()->getCABIFunction();
+  BOOST_REQUIRE(Prototype != nullptr);
+  BOOST_CHECK(Prototype->ABI() == model::ABI::SystemV_x86_64);
+  BOOST_CHECK(Prototype->Arguments().size() == 2U);
+
   rp_step *LiftStep = rp_manager_get_step_from_name(Manager, "lift");
   const rp_container_identifier
     *RootIdentifier = rp_manager_get_container_identifier_from_name(Manager,

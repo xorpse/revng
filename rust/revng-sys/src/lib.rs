@@ -67,6 +67,31 @@ pub struct rp_lifter_callbacks {
     pub lift: Option<rp_lift_callback>,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub enum rp_primitive_kind {
+    RP_PRIMITIVE_KIND_VOID = 0,
+    RP_PRIMITIVE_KIND_GENERIC,
+    RP_PRIMITIVE_KIND_POINTER_OR_NUMBER,
+    RP_PRIMITIVE_KIND_NUMBER,
+    RP_PRIMITIVE_KIND_UNSIGNED,
+    RP_PRIMITIVE_KIND_SIGNED,
+    RP_PRIMITIVE_KIND_FLOAT,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct rp_primitive_type {
+    pub kind: rp_primitive_kind,
+    pub size: u64,
+}
+
+#[repr(C)]
+pub struct rp_cabi_argument {
+    pub name: *const c_char,
+    pub type_: rp_primitive_type,
+}
+
 extern "C" {
     pub fn rp_initialize(
         argc: c_int,
@@ -90,6 +115,16 @@ extern "C" {
     pub fn rp_manager_set_lifter_backend(
         manager: *mut rp_manager,
         name: *const c_char,
+        error: *mut rp_error,
+    ) -> bool;
+    pub fn rp_manager_set_cabi_prototype(
+        manager: *mut rp_manager,
+        address: *const c_char,
+        abi: *const c_char,
+        function_name: *const c_char,
+        arguments_count: u64,
+        arguments: *const rp_cabi_argument,
+        return_type: *const rp_primitive_type,
         error: *mut rp_error,
     ) -> bool;
     pub fn rp_manager_destroy(manager: *mut rp_manager);
