@@ -27,7 +27,8 @@ static llvm::Error validateAddress(const MetaAddress &Address,
 }
 
 llvm::Expected<LoadedAddressSpace>
-loadAddressSpace(const AbstractAddressSpace &AddressSpace) {
+loadAddressSpace(const AbstractAddressSpace &AddressSpace,
+                 bool MaterializeData) {
   const auto Architecture = AddressSpace.architecture();
   if (Architecture == model::Architecture::Invalid)
     return revng::createError("address space has an invalid architecture");
@@ -50,6 +51,7 @@ loadAddressSpace(const AbstractAddressSpace &AddressSpace) {
     Result.Model->EntryPoint() = *Entry;
   }
 
+  uint64_t NextOffset = 0;
   for (const Mapping &Mapping : AddressSpace.mappings()) {
     if (auto Error = validateAddress(Mapping.Start,
                                      Architecture,
@@ -57,16 +59,22 @@ loadAddressSpace(const AbstractAddressSpace &AddressSpace) {
       return std::move(Error);
     if (Mapping.VirtualSize == 0)
       return revng::createError("address-space mappings cannot be empty");
-    if (Mapping.Contents.size() > Mapping.VirtualSize)
+    const uint64_t BackingSize = Mapping.BackingSize == 0 ?
+                                   Mapping.Contents.size() :
+                                   Mapping.BackingSize;
+    if (Mapping.Contents.size() > BackingSize)
+      return revng::createError("mapping contents exceed its backing size");
+    if (BackingSize > Mapping.VirtualSize)
       return revng::createError("mapping contents exceed its virtual size");
-    if (Mapping.VirtualSize > Result.Data.max_size() - Result.Data.size())
+    if (Mapping.VirtualSize > std::numeric_limits<uint64_t>::max() - NextOffset)
       return revng::createError("flattened address-space buffer is too large");
 
-    const uint64_t StartOffset = Result.Data.size();
+    const uint64_t StartOffset = NextOffset;
+    NextOffset += Mapping.VirtualSize;
     model::Segment Segment({ Mapping.Start, Mapping.VirtualSize });
     Segment.Binary() = BinaryReference;
     Segment.StartOffset() = StartOffset;
-    Segment.FileSize() = Mapping.Contents.size();
+    Segment.FileSize() = BackingSize;
     Segment.IsReadable() = Mapping.Readable;
     Segment.IsWriteable() = Mapping.Writeable;
     Segment.IsExecutable() = Mapping.Executable;
@@ -74,10 +82,14 @@ loadAddressSpace(const AbstractAddressSpace &AddressSpace) {
     if (not Result.Model->Segments().insert(std::move(Segment)).second)
       return revng::createError("duplicate address-space mapping");
 
-    Result.Data.resize(StartOffset + Mapping.VirtualSize, 0);
-    std::copy(Mapping.Contents.begin(),
-              Mapping.Contents.end(),
-              Result.Data.begin() + StartOffset);
+    if (MaterializeData) {
+      if (NextOffset > Result.Data.max_size())
+        return revng::createError("flattened address-space buffer is too large");
+      Result.Data.resize(NextOffset, 0);
+      std::copy(Mapping.Contents.begin(),
+                Mapping.Contents.end(),
+                Result.Data.begin() + StartOffset);
+    }
   }
 
   for (MetaAddress Address : AddressSpace.extraCodeAddresses()) {

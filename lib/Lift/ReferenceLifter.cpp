@@ -252,7 +252,8 @@ bool Registered = []() {
   };
   llvm::cantFail(LifterRegistry::registerLifter("reference-x86_64",
                                                 std::move(Factory),
-                                                false));
+                                                false,
+                                                { model::Architecture::x86_64 }));
   return true;
 }();
 } // namespace

@@ -27,6 +27,9 @@ struct Mapping {
   bool Writeable = false;
   bool Executable = false;
   std::string Name;
+  /// Number of bytes backed by the provider. For ordinary mappings this is
+  /// inferred from Contents. A non-zero value permits metadata-only mappings.
+  uint64_t BackingSize = 0;
 };
 
 /// Host-provided description of a program that has already been loaded.

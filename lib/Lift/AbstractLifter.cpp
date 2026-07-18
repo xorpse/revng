@@ -6,6 +6,8 @@
 #include <mutex>
 #include <string>
 
+#include "llvm/ADT/STLExtras.h"
+
 #include "revng/Lift/AbstractLifter.h"
 #include "revng/Support/Error.h"
 
@@ -15,6 +17,9 @@ namespace {
 struct RegistryStorage {
   std::mutex Mutex;
   std::map<std::string, LifterFactory, std::less<>> Factories;
+  std::map<std::string,
+           std::vector<model::Architecture::Values>,
+           std::less<>> SupportedArchitectures;
   std::map<const model::Binary *, LifterFactory> Overrides;
   std::string Default;
 };
@@ -28,7 +33,9 @@ RegistryStorage &storage() {
 
 llvm::Error LifterRegistry::registerLifter(llvm::StringRef Name,
                                            LifterFactory Factory,
-                                           bool MakeDefault) {
+                                           bool MakeDefault,
+                                           llvm::ArrayRef<model::Architecture::Values>
+                                             SupportedArchitectures) {
   if (Name.empty())
     return revng::createError("a lifter backend must have a name");
   if (not Factory)
@@ -40,6 +47,8 @@ llvm::Error LifterRegistry::registerLifter(llvm::StringRef Name,
                                                         std::move(Factory));
   if (not Inserted)
     return revng::createError("lifter backend is already registered: " + Name);
+  Storage.SupportedArchitectures[Iterator->first] =
+    std::vector(SupportedArchitectures.begin(), SupportedArchitectures.end());
   if (MakeDefault)
     Storage.Default = Iterator->first;
   return llvm::Error::success();
@@ -121,6 +130,28 @@ bool LifterRegistry::hasLifter(const model::Binary &Binary) {
   RegistryStorage &Storage = storage();
   std::lock_guard Lock(Storage.Mutex);
   return not Storage.Factories.empty() or Storage.Overrides.contains(&Binary);
+}
+
+std::vector<std::string> LifterRegistry::names() {
+  RegistryStorage &Storage = storage();
+  std::lock_guard Lock(Storage.Mutex);
+  std::vector<std::string> Result;
+  Result.reserve(Storage.Factories.size());
+  for (const auto &[Name, Factory] : Storage.Factories)
+    Result.push_back(Name);
+  return Result;
+}
+
+bool LifterRegistry::supportsArchitecture(
+  llvm::StringRef Name,
+  model::Architecture::Values Architecture) {
+  RegistryStorage &Storage = storage();
+  std::lock_guard Lock(Storage.Mutex);
+  auto Iterator = Storage.SupportedArchitectures.find(Name.str());
+  if (Iterator == Storage.SupportedArchitectures.end())
+    return false;
+  const auto &Supported = Iterator->second;
+  return Supported.empty() or llvm::is_contained(Supported, Architecture);
 }
 
 } // namespace revng::lift

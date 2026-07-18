@@ -45,8 +45,11 @@ REVNG_SDK_MANIFEST=/path/to/revng-sdk.json \
   cargo run --bin revng-rust-decompile-example -- reference-x86_64 reference.c
 ```
 
-PipelineC returns the standard C+PTML artifact. The example decodes that markup
-in Rust and writes ordinary C text to the requested output path.
+The manager is backed by range-read callbacks, so creating it does not copy the
+input image. The Inkwell callback uses `rp_binary_view_read_address` to request
+only the instruction bytes it decodes. PipelineC's direct decompilation API
+returns ordinary C text; callers that need token markup can request the PTML
+variant instead.
 
 The SDK manifest used by this executable must contain both pipeline entries:
 

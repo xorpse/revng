@@ -164,10 +164,14 @@ automatically. The matching pinned LLVM headers are still needed when a custom
 backend manipulates LLVM IR directly, as the Inkwell example does.
 
 The pure-C example is in [`../examples/lifter-library.c`](../examples/lifter-library.c),
+the full decompiler example is in
+[`../examples/decompile-library.c`](../examples/decompile-library.c),
 the CMake integration example is in
 [`../examples/cmake-lifter`](../examples/cmake-lifter), and the Rust examples
 are in [`../examples/rust-lifter`](../examples/rust-lifter) and
 [`../examples/rust-inkwell-lifter`](../examples/rust-inkwell-lifter).
+See [`embedding-api.md`](embedding-api.md) for the lazy-byte, serialization,
+model, backend-discovery, and direct C-emission APIs.
 
 See [`linux-sdk.md`](linux-sdk.md) for the corresponding Linux x86-64 build,
 including the optional libtcg backend.

@@ -6,6 +6,9 @@
 
 std::optional<llvm::ArrayRef<uint8_t>>
 RawBinaryView::getByOffset(uint64_t Offset, uint64_t Size) const {
+  if (Provider)
+    return Provider->getByOffset(Offset, Size);
+
   auto Sum = OverflowSafeInt(Offset) + Size;
   if (not Sum or *Sum > Data.size())
     return std::nullopt;
@@ -77,7 +80,7 @@ RawBinaryView::getFromAddressOn(MetaAddress Address) const {
   if (not Size or not StartOffset)
     return std::nullopt;
 
-  return Data.slice(*StartOffset, *Size);
+  return getByOffset(*StartOffset, *Size);
 }
 
 /// \note This function ignores the underlying data, it just performs address

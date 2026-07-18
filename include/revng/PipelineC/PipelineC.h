@@ -20,13 +20,13 @@
 #include <stdint.h>
 #endif
 
-#include "revng/PipelineC/Callbacks.h"
-
 #if defined(__cplusplus) && !defined(REVNG_PIPELINEC_C_ONLY)
 #include "revng/PipelineC/ForwardDeclarations.h"
 #else
 #include "revng/PipelineC/ForwardDeclarationsC.h"
 #endif
+
+#include "revng/PipelineC/Callbacks.h"
 
 #ifdef __cplusplus
 extern "C" {

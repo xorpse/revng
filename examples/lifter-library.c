@@ -33,12 +33,25 @@ mapping_at(void *opaque, uint64_t index, rp_address_space_mapping *output) {
     return false;
   output->start = "0x400000:Code_x86_64";
   output->virtual_size = 4;
-  output->contents = space->bytes;
-  output->contents_size = sizeof(space->bytes);
+  output->backing_size = sizeof(space->bytes);
   output->readable = true;
   output->writeable = false;
   output->executable = true;
   output->name = "example-code";
+  return true;
+}
+
+static bool read_bytes(void *opaque,
+                       uint64_t mapping_index,
+                       uint64_t offset,
+                       uint8_t *destination,
+                       uint64_t size) {
+  struct address_space *space = opaque;
+  if (mapping_index != 0 || offset > sizeof(space->bytes)
+      || size > sizeof(space->bytes) - offset)
+    return false;
+  for (uint64_t i = 0; i < size; ++i)
+    destination[i] = space->bytes[offset + i];
   return true;
 }
 
@@ -66,12 +79,18 @@ int main(int argc, char **argv) {
 
   int result = 1;
   struct address_space space = { { 0x90, 0xc3 } };
-  rp_address_space_callbacks callbacks = { &space,      architecture,
-                                           entry_point, mapping_count,
-                                           mapping_at,  extra_code_count,
+  rp_address_space_callbacks callbacks = { &space,
+                                           architecture,
+                                           entry_point,
+                                           mapping_count,
+                                           mapping_at,
+                                           read_bytes,
+                                           extra_code_count,
+                                           NULL,
                                            NULL };
   rp_error *error = rp_error_create();
   rp_manager *manager = rp_manager_create_from_address_space(&callbacks,
+                                                             0,
                                                              0,
                                                              NULL,
                                                              "",

@@ -42,6 +42,8 @@ using rp_error = std::variant<std::monostate /* allows "no value" state */,
                               rp_document_error>;
 
 typedef revng::pipes::PipelineManager rp_manager;
+class RawBinaryView;
+typedef RawBinaryView rp_binary_view;
 typedef const pipeline::Kind rp_kind;
 typedef const pipeline::Rank rp_rank;
 typedef pipeline::Step rp_step;
