@@ -5,6 +5,7 @@
 //
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -14,6 +15,7 @@
 #include "revng/BasicAnalyses/MaterializedValue.h"
 #include "revng/Model/Architecture.h"
 #include "revng/Model/Binary.h"
+#include "revng/Model/RawBinaryProvider.h"
 #include "revng/Support/Generator.h"
 #include "revng/Support/OverflowSafeInt.h"
 
@@ -25,17 +27,23 @@ private:
 private:
   const model::Binary &Binary;
   llvm::ArrayRef<uint8_t> Data;
+  std::shared_ptr<RawBinaryProvider> Provider;
 
 public:
   RawBinaryView(const model::Binary &Binary, llvm::StringRef Data) :
     RawBinaryView(Binary, { Data.bytes_begin(), Data.bytes_end() }) {}
 
   RawBinaryView(const model::Binary &Binary, llvm::ArrayRef<uint8_t> Data) :
-    Binary(Binary), Data(Data) {}
+    Binary(Binary), Data(Data), Provider(findRawBinaryProvider(Binary)) {}
 
 public:
-  uint64_t size() { return Data.size(); }
-  llvm::ArrayRef<uint8_t> bytes() const { return Data; }
+  uint64_t size() const { return Provider ? Provider->size() : Data.size(); }
+  llvm::ArrayRef<uint8_t> bytes() const {
+    if (not Provider)
+      return Data;
+    auto Result = Provider->bytes();
+    return Result.value_or(llvm::ArrayRef<uint8_t>());
+  }
 
 public:
   std::optional<llvm::ArrayRef<uint8_t>> getByOffset(uint64_t Offset,

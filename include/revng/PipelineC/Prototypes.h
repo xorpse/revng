@@ -78,8 +78,7 @@
  *
  * \return true if the initialization was successful.
  */
-bool rp_initialize(int argc,
-                   const char *argv[],
+bool rp_initialize(int argc, const char *argv[],
                    uint32_t signals_to_preserve_count,
                    int signals_to_preserve[]);
 LENGTH_HINT(rp_initialize, 1, 0)
@@ -126,8 +125,7 @@ LENGTH_HINT(rp_manager_create, 1, 0)
  * directly.
  */
 rp_manager * /*owning*/
-rp_manager_create_from_string(uint64_t pipelines_count,
-                              const char *pipelines[],
+rp_manager_create_from_string(uint64_t pipelines_count, const char *pipelines[],
                               uint64_t pipeline_flags_count,
                               const char *pipeline_flags[],
                               const char *execution_directory);
@@ -135,36 +133,167 @@ LENGTH_HINT(rp_manager_create_from_string, 1, 0)
 LENGTH_HINT(rp_manager_create_from_string, 3, 2)
 
 /**
- * Create a manager whose input model and bytes come from an already-loaded
- * host address space. The standard configured pipeline paths are used.
- * Callback-returned pointers only need to remain valid for the duration of
- * this call.
+ * Create a manager backed by range-read callbacks. When
+ * materialize_for_serialization is false, bytes are fetched and cached on
+ * demand and callbacks remain alive until manager destruction. When true, all
+ * backed bytes are read during this call and the callback is released before
+ * returning, producing an ordinary serializable manager.
  */
 rp_manager * /*owning*/
-rp_manager_create_from_address_space(const rp_address_space_callbacks
-                                       *callbacks,
-                                     uint64_t pipeline_flags_count,
-                                     const char *pipeline_flags[],
-                                     const char *execution_directory,
-                                     rp_error *error);
-LENGTH_HINT(rp_manager_create_from_address_space, 2, 1)
+rp_manager_create_from_address_space(
+    const rp_address_space_callbacks *callbacks,
+    uint64_t materialize_for_serialization, uint64_t pipeline_flags_count,
+    const char *pipeline_flags[], const char *execution_directory,
+    rp_error *error);
+LENGTH_HINT(rp_manager_create_from_address_space, 3, 2)
 
 /**
- * Install a lifter for this manager. The callback object and its opaque value
- * must remain valid until rp_manager_destroy(). The output module is exposed
- * through LLVM's stable C API as LLVMModuleRef.
+ * File-backed lazy address-space convenience API. Files remain owned by the
+ * caller but must not be replaced or truncated while a lazy manager is alive.
  */
-bool rp_set_lifter(rp_manager *manager,
-                   const rp_lifter_callbacks *callbacks,
+rp_manager * /*owning*/
+rp_manager_create_from_file_address_space(
+    const char *architecture, const char *entry_point, uint64_t mappings_count,
+    const rp_file_address_space_mapping mappings[],
+    uint64_t materialize_for_serialization, uint64_t pipeline_flags_count,
+    const char *pipeline_flags[], const char *execution_directory,
+    rp_error *error);
+LENGTH_HINT(rp_manager_create_from_file_address_space, 6, 5)
+
+/**
+ * Install a lifter for this manager. The callback table is copied; its opaque
+ * value must remain valid until rp_manager_destroy(). The output module is
+ * exposed through LLVM's stable C API as LLVMModuleRef.
+ */
+bool rp_set_lifter(rp_manager *manager, const rp_lifter_callbacks *callbacks,
                    rp_error *error);
+
+uint64_t rp_binary_view_size(const rp_binary_view *binary);
+bool rp_binary_view_read_offset(const rp_binary_view *binary, uint64_t offset,
+                                uint64_t size, uint8_t destination[],
+                                rp_error *error);
+bool rp_binary_view_read_address(const rp_binary_view *binary,
+                                 const char *address, uint64_t size,
+                                 uint8_t destination[], rp_error *error);
+LENGTH_HINT(rp_binary_view_read_offset, 3, 2)
+LENGTH_HINT(rp_binary_view_read_address, 3, 2)
+
+/** Materialize a lazy manager's complete flattened address space. */
+bool rp_manager_materialize_address_space(rp_manager *manager, rp_error *error);
 
 /**
  * Select a registered lifter backend by name for this manager. This is the
  * convenient C API for built-in and plugin-provided backends; rp_set_lifter()
  * remains available for callback implementations.
  */
-bool rp_manager_set_lifter_backend(rp_manager *manager,
-                                   const char *name,
+bool rp_manager_set_lifter_backend(rp_manager *manager, const char *name,
+                                   rp_error *error);
+
+uint64_t rp_lifter_backend_count();
+char * /*owning*/ rp_lifter_backend_name(uint64_t index);
+bool rp_lifter_backend_supports_architecture(const char *backend,
+                                             const char *architecture);
+
+uint64_t rp_architecture_count();
+char * /*owning*/ rp_architecture_name(uint64_t index);
+uint64_t rp_abi_count(const char *architecture);
+char * /*owning*/ rp_abi_name(const char *architecture, uint64_t index);
+
+/**
+ * Assign a C ABI prototype made of primitive types to a known function.
+ * Sizes are expressed in bytes; a NULL return_type means void. This compact
+ * interface is intended for embedding applications that already know a simple
+ * native signature without requiring them to construct revng's C++ model.
+ */
+bool rp_manager_set_cabi_prototype(rp_manager *manager, const char *address,
+                                   const char *abi, const char *function_name,
+                                   uint64_t arguments_count,
+                                   const rp_cabi_argument arguments[],
+                                   const rp_primitive_type *return_type,
+                                   rp_error *error);
+
+bool rp_manager_set_default_abi(rp_manager *manager, const char *abi,
+                                rp_error *error);
+bool rp_manager_set_target_abi(rp_manager *manager, const char *abi,
+                               rp_error *error);
+bool rp_manager_set_operating_system(rp_manager *manager,
+                                     const char *operating_system,
+                                     rp_error *error);
+bool rp_manager_set_platform_name(rp_manager *manager,
+                                  const char *platform_name, rp_error *error);
+bool rp_manager_set_entry_point(rp_manager *manager, const char *address,
+                                rp_error *error);
+bool rp_manager_add_extra_code_address(rp_manager *manager, const char *address,
+                                       rp_error *error);
+bool rp_manager_add_function(rp_manager *manager, const char *address,
+                             const char *name, rp_error *error);
+bool rp_manager_set_function_prototype(rp_manager *manager, const char *address,
+                                       uint64_t type_definition_id,
+                                       rp_error *error);
+bool rp_manager_add_function_exported_name(rp_manager *manager,
+                                           const char *address,
+                                           const char *name, rp_error *error);
+bool rp_manager_add_imported_library(rp_manager *manager, const char *name,
+                                     rp_error *error);
+bool rp_manager_add_imported_function(rp_manager *manager, const char *name,
+                                      uint64_t type_definition_id,
+                                      rp_error *error);
+bool rp_manager_add_data_symbol(rp_manager *manager, const char *address,
+                                const char *name, const rp_type *type,
+                                rp_error *error);
+
+uint64_t rp_manager_create_struct_type(rp_manager *manager, const char *name,
+                                       const char *comment, uint64_t size,
+                                       uint64_t can_contain_code,
+                                       rp_error *error);
+bool rp_manager_add_struct_field(rp_manager *manager,
+                                 uint64_t type_definition_id, uint64_t offset,
+                                 const char *name, const char *comment,
+                                 const rp_type *type, rp_error *error);
+uint64_t rp_manager_create_union_type(rp_manager *manager, const char *name,
+                                      const char *comment, rp_error *error);
+bool rp_manager_add_union_field(rp_manager *manager,
+                                uint64_t type_definition_id, const char *name,
+                                const char *comment, const rp_type *type,
+                                rp_error *error);
+uint64_t rp_manager_create_enum_type(rp_manager *manager, const char *name,
+                                     const char *comment,
+                                     const rp_primitive_type *underlying_type,
+                                     rp_error *error);
+bool rp_manager_add_enum_entry(rp_manager *manager, uint64_t type_definition_id,
+                               uint64_t value, const char *name,
+                               const char *comment, rp_error *error);
+uint64_t rp_manager_create_typedef(rp_manager *manager, const char *name,
+                                   const char *comment,
+                                   const rp_type *underlying_type,
+                                   rp_error *error);
+uint64_t rp_manager_create_cabi_type(rp_manager *manager, const char *name,
+                                     const char *comment, const char *abi,
+                                     uint64_t arguments_count,
+                                     const rp_typed_argument arguments[],
+                                     const rp_type *return_type,
+                                     const char *return_value_comment,
+                                     rp_error *error);
+uint64_t rp_manager_create_raw_function_type(
+    rp_manager *manager, const char *name, const char *comment,
+    const char *architecture, uint64_t arguments_count,
+    const rp_named_typed_register arguments[], uint64_t return_values_count,
+    const rp_named_typed_register return_values[],
+    uint64_t preserved_registers_count, const char *preserved_registers[],
+    uint64_t final_stack_offset, const rp_type *stack_arguments_type,
+    const char *return_value_comment, rp_error *error);
+LENGTH_HINT(rp_manager_create_raw_function_type, 9, 8)
+
+/** Run the configured full pipeline and return the single-file C artifact. */
+rp_buffer * /*owning*/
+rp_manager_decompile_to_ptml(rp_manager *manager, rp_error *error);
+rp_buffer * /*owning*/
+rp_manager_decompile_to_c(rp_manager *manager, rp_error *error);
+rp_buffer * /*owning*/
+rp_manager_decompile_function_to_ptml(rp_manager *manager, const char *address,
+                                      rp_error *error);
+rp_buffer * /*owning*/
+rp_manager_decompile_function_to_c(rp_manager *manager, const char *address,
                                    rp_error *error);
 
 /**
@@ -215,11 +344,9 @@ const rp_kind *rp_manager_get_kind_from_name(const rp_manager *manager,
  * \return 0 if an error was encountered, the serialized container otherwise
  */
 rp_buffer * /*owning*/
-rp_manager_produce_targets(rp_manager *manager,
-                           const rp_step *step,
+rp_manager_produce_targets(rp_manager *manager, const rp_step *step,
                            const rp_container *container,
-                           uint64_t targets_count,
-                           const rp_target *targets[],
+                           uint64_t targets_count, const rp_target *targets[],
                            rp_error *error);
 LENGTH_HINT(rp_manager_produce_targets, 4, 3)
 
@@ -238,13 +365,11 @@ LENGTH_HINT(rp_manager_produce_targets, 4, 3)
  * global objects otherwise
  */
 rp_diff_map * /*owning*/
-rp_manager_run_analysis(rp_manager *manager,
-                        const char *step_name,
+rp_manager_run_analysis(rp_manager *manager, const char *step_name,
                         const char *analysis_name,
                         const rp_container_targets_map *target_map,
                         const rp_string_map *options,
-                        rp_invalidations *invalidations,
-                        rp_error *error);
+                        rp_invalidations *invalidations, rp_error *error);
 
 /**
  * Request to run all analyses of the given list on all targets
@@ -256,11 +381,9 @@ rp_manager_run_analysis(rp_manager *manager,
  * global objects otherwise
  */
 rp_diff_map * /*owning*/
-rp_manager_run_analyses_list(rp_manager *manager,
-                             const char *list_name,
+rp_manager_run_analyses_list(rp_manager *manager, const char *list_name,
                              const rp_string_map *options,
-                             rp_invalidations *invalidations,
-                             rp_error *error);
+                             rp_invalidations *invalidations, rp_error *error);
 
 /**
  * \return the container status associated to the provided \p container
@@ -391,11 +514,9 @@ const char *rp_container_get_mime(const rp_container *container);
  *
  * \return false if a error was encountered, true otherwise
  */
-bool rp_manager_container_deserialize(rp_manager *manager,
-                                      rp_step *step,
+bool rp_manager_container_deserialize(rp_manager *manager, rp_step *step,
                                       const char *container_name,
-                                      const char *content,
-                                      uint64_t size,
+                                      const char *content, uint64_t size,
                                       rp_invalidations *invalidations);
 LENGTH_HINT(rp_manager_container_deserialize, 3, 4)
 
@@ -543,8 +664,7 @@ void rp_string_map_destroy(rp_string_map *map);
 /**
  * inserts the pair of key and value in the provided map
  */
-void rp_string_map_insert(rp_string_map *map,
-                          const char *key,
+void rp_string_map_insert(rp_string_map *map, const char *key,
                           const char *value);
 
 /** \} */

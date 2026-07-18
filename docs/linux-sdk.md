@@ -281,3 +281,8 @@ REVNG_SDK_MANIFEST="$SDK_ROOT/revng-sdk.json" \
 
 The same examples can select `reference-x86_64` or `libtcg` to exercise the
 registered native backends from Rust.
+
+[`embedding-api.md`](embedding-api.md) documents the lazy-byte and optional
+serialization lifecycle, model construction, backend discovery, and direct
+full-pipeline C APIs. [`../examples/decompile-library.c`](../examples/decompile-library.c)
+is the corresponding minimal C program and accepts either built-in backend.

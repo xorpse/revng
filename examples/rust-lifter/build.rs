@@ -16,6 +16,7 @@ fn main() {
         .file("src/bridge.cc")
         .include(&manifest)
         .flag("-std=c++17")
+        .flag("-stdlib=libc++")
         .flag("-fno-rtti");
     for include in sdk.include_dirs() {
         bridge.include(include);

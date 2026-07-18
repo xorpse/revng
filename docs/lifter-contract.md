@@ -86,6 +86,12 @@ test_lifter_library_c reference-x86_64
 test_lifter_library_c libtcg
 ```
 
+[`examples/decompile-library.c`](../examples/decompile-library.c) goes through
+the full decompiler pipeline. It supplies a lazy five-byte implementation of
+`int32_t add(int32_t, int32_t)`, assigns its System V ABI prototype, selects
+either `reference-x86_64` or `libtcg`, and receives plain C from
+`rp_manager_decompile_to_c`.
+
 [`examples/rust-lifter`](../examples/rust-lifter) shows the same embedding
 boundary from Rust using `cxx`. Rust owns instruction decoding and the backend
 callback; a small C++ adapter emits the LLVM module and its revng metadata.

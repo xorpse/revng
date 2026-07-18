@@ -15,7 +15,6 @@ path = "src/bin/decompile.rs"
 [dependencies]
 cxx = "1.0"
 inkwell = { version = "0.9", default-features = false, features = ["llvm16-0-no-llvm-linking", "target-x86"] }
-quick-xml = "0.38"
 revng-sys = { path = "../../rust/revng-sys" }
 
 [build-dependencies]

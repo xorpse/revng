@@ -52,6 +52,9 @@ public:
     };
     GlobalVariable *SP = makeCSV("_rsp");
     GlobalVariable *PC = makeCSV("_rip");
+    GlobalVariable *RAX = makeCSV("_rax");
+    GlobalVariable *RDI = makeCSV("_rdi");
+    GlobalVariable *RSI = makeCSV("_rsi");
     auto makePCComponent = [&](StringRef Name, size_t Size) {
       auto *ComponentType = Type::getIntNTy(Context, Size * 8);
       return new GlobalVariable(Output,
@@ -137,20 +140,52 @@ public:
         if (not Byte)
           return revng::createError("reference lifter cannot read instruction");
         const uint8_t Opcode = (*Byte)[0];
-        if (Opcode != 0x90 and Opcode != 0xc3)
+        uint64_t InstructionSize = 1;
+        enum class Semantics { Nop, Ret, MovEAXEDI, AddEAXESI };
+        Semantics InstructionSemantics;
+        if (Opcode == 0x90) {
+          InstructionSemantics = Semantics::Nop;
+        } else if (Opcode == 0xc3) {
+          InstructionSemantics = Semantics::Ret;
+        } else if (Opcode == 0x89 or Opcode == 0x01) {
+          auto Bytes = View.getByAddress(Address, 2);
+          if (not Bytes)
+            return revng::createError("reference lifter cannot read instruction");
+          if (Opcode == 0x89 and (*Bytes)[1] == 0xf8)
+            InstructionSemantics = Semantics::MovEAXEDI;
+          else if (Opcode == 0x01 and (*Bytes)[1] == 0xf0)
+            InstructionSemantics = Semantics::AddEAXESI;
+          else
+            return revng::createError("reference lifter encountered unsupported "
+                                      "opcode");
+          InstructionSize = 2;
+        } else {
           return revng::createError("reference lifter encountered unsupported "
                                     "opcode");
+        }
 
         Builder.SetInsertPoint(Block);
         Value *Null = ConstantPointerNull::get(I8Ptr);
         Builder.CreateCall(NewPC,
                            { BasicBlockID(Address).toValue(&Output),
-                             ConstantInt::get(I64, 1),
+                             ConstantInt::get(I64, InstructionSize),
                              ConstantInt::get(I32, InstructionCount == 0),
                              ConstantInt::get(I32, 0),
                              Null });
-        if (Opcode == 0x90) {
-          MetaAddress Next = Address + 1;
+        if (InstructionSemantics != Semantics::Ret) {
+          if (InstructionSemantics == Semantics::MovEAXEDI) {
+            Value *Value = Builder.CreateLoad(I64, RDI);
+            Value = Builder.CreateTrunc(Value, I32);
+            Builder.CreateStore(Builder.CreateZExt(Value, I64), RAX);
+          } else if (InstructionSemantics == Semantics::AddEAXESI) {
+            Value *Left = Builder.CreateTrunc(Builder.CreateLoad(I64, RAX),
+                                              I32);
+            Value *Right = Builder.CreateTrunc(Builder.CreateLoad(I64, RSI),
+                                               I32);
+            Value *Result = Builder.CreateAdd(Left, Right);
+            Builder.CreateStore(Builder.CreateZExt(Result, I64), RAX);
+          }
+          MetaAddress Next = Address + InstructionSize;
           Builder.CreateStore(ConstantInt::get(I64, Next.address()), PC);
           auto Existing = InstructionBlocks.find(Next);
           if (Existing != InstructionBlocks.end()) {
@@ -217,7 +252,8 @@ bool Registered = []() {
   };
   llvm::cantFail(LifterRegistry::registerLifter("reference-x86_64",
                                                 std::move(Factory),
-                                                false));
+                                                false,
+                                                { model::Architecture::x86_64 }));
   return true;
 }();
 } // namespace

@@ -8,8 +8,6 @@ use std::slice;
 use inkwell::module::Module;
 use inkwell::values::{AsValueRef, BasicMetadataValueEnum, PointerValue};
 use inkwell::AddressSpace;
-use quick_xml::events::Event;
-use quick_xml::Reader;
 
 #[cxx::bridge(namespace = "revng_inkwell")]
 mod ffi {
@@ -29,6 +27,7 @@ mod ffi {
 struct DecodedInstruction {
     address: u64,
     kind: u8,
+    size: u8,
 }
 
 fn parse_address(value: &str) -> Result<u64, String> {
@@ -49,29 +48,35 @@ fn model_entry(model_yaml: &str) -> Option<&str> {
 
 fn decode_x86_64(binary: &[u8], entry: u64) -> Result<Vec<DecodedInstruction>, String> {
     let mut decoded = Vec::new();
-    for (offset, opcode) in binary.iter().copied().enumerate() {
-        let kind = match opcode {
-            0x90 => 0,
-            0xc3 => 1,
+    let mut offset = 0;
+    while offset < binary.len() {
+        let (kind, size) = match binary[offset..] {
+            [0x90, ..] => (0, 1),       // NOP
+            [0xc3, ..] => (1, 1),       // RET
+            [0x89, 0xf8, ..] => (2, 2), // MOV EAX, EDI
+            [0x01, 0xf0, ..] => (3, 2), // ADD EAX, ESI
             _ => {
                 return Err(format!(
-                    "unsupported opcode 0x{opcode:02x} at offset {offset}"
-                ))
+                    "unsupported opcode 0x{:02x} at offset {offset}",
+                    binary[offset]
+                ));
             }
         };
         decoded.push(DecodedInstruction {
             address: entry + offset as u64,
             kind,
+            size,
         });
         if kind == 1 {
             return Ok(decoded);
         }
+        offset += usize::from(size);
     }
     Err("the example input has no RET".into())
 }
 
 struct CallbackContext {
-    bytes: [u8; 2],
+    bytes: [u8; 5],
     error: CString,
 }
 
@@ -99,14 +104,40 @@ unsafe extern "C" fn mapping_at(
     unsafe {
         *output = revng_sys::rp_address_space_mapping {
             start: b"0x400000:Code_x86_64\0".as_ptr().cast(),
-            virtual_size: 4,
-            contents: context.bytes.as_ptr(),
-            contents_size: context.bytes.len() as u64,
+            virtual_size: context.bytes.len() as u64,
+            backing_size: context.bytes.len() as u64,
             readable: true,
             writeable: false,
             executable: true,
             name: b"rust-inkwell-example-code\0".as_ptr().cast(),
         };
+    }
+    true
+}
+
+unsafe extern "C" fn read_bytes(
+    opaque: *mut c_void,
+    mapping_index: u64,
+    offset: u64,
+    destination: *mut u8,
+    size: u64,
+) -> bool {
+    let context = unsafe { &mut *opaque.cast::<CallbackContext>() };
+    let Ok(offset) = usize::try_from(offset) else {
+        return false;
+    };
+    let Ok(size) = usize::try_from(size) else {
+        return false;
+    };
+    if mapping_index != 0
+        || destination.is_null()
+        || offset > context.bytes.len()
+        || size > context.bytes.len() - offset
+    {
+        return false;
+    }
+    unsafe {
+        ptr::copy_nonoverlapping(context.bytes.as_ptr().add(offset), destination, size);
     }
     true
 }
@@ -118,8 +149,7 @@ unsafe extern "C" fn extra_code_address_count(_: *mut c_void) -> u64 {
 unsafe extern "C" fn lift_callback(
     opaque: *mut c_void,
     model_yaml: *const c_char,
-    binary: *const u8,
-    binary_size: u64,
+    binary: *const revng_sys::rp_binary_view,
     entries: *const *const c_char,
     entry_count: u64,
     output: revng_sys::LLVMModuleRef,
@@ -127,13 +157,12 @@ unsafe extern "C" fn lift_callback(
 ) -> bool {
     let context = unsafe { &mut *opaque.cast::<CallbackContext>() };
     let model_yaml = unsafe { CStr::from_ptr(model_yaml) }.to_string_lossy();
-    let binary = unsafe { slice::from_raw_parts(binary, binary_size as usize) };
     let entry_pointers = if entry_count == 0 {
         &[][..]
     } else {
         unsafe { slice::from_raw_parts(entries, entry_count as usize) }
     };
-    let rust_entries = entry_pointers
+    let rust_entries: Vec<String> = entry_pointers
         .iter()
         .map(|entry| {
             unsafe { CStr::from_ptr(*entry) }
@@ -141,7 +170,28 @@ unsafe extern "C" fn lift_callback(
                 .into_owned()
         })
         .collect();
-    let result = lift(&model_yaml, binary, rust_entries, output as usize);
+    let entry = rust_entries
+        .first()
+        .map(String::as_str)
+        .or_else(|| model_entry(&model_yaml))
+        .unwrap_or("0x400000:Code_x86_64");
+    let mut bytes = [0_u8; 5];
+    if !unsafe {
+        revng_sys::rp_binary_view_read_address(
+            binary,
+            CString::new(entry).unwrap().as_ptr(),
+            bytes.len() as u64,
+            bytes.as_mut_ptr(),
+            ptr::null_mut(),
+        )
+    } {
+        context.error = CString::new("failed to lazily read the example function").unwrap();
+        if !error_message.is_null() {
+            unsafe { *error_message = context.error.as_ptr() };
+        }
+        return false;
+    }
+    let result = lift(&model_yaml, &bytes, rust_entries, output as usize);
     if result.is_empty() {
         return true;
     }
@@ -186,6 +236,9 @@ fn emit_with_inkwell(
     };
     let sp = make_csv("_rsp");
     let pc = make_csv("_rip");
+    let rax = make_csv("_rax");
+    let rdi = make_csv("_rdi");
+    let rsi = make_csv("_rsi");
     let pc_epoch = module.add_global(i32_type, None, "pc_epoch");
     pc_epoch.set_initializer(&i32_type.const_zero());
     let pc_address_space = module.add_global(i16_type, None, "pc_address_space");
@@ -271,7 +324,9 @@ fn emit_with_inkwell(
         let null = pointer_type.const_null();
         let arguments: [BasicMetadataValueEnum; 5] = [
             block_id.into(),
-            i64_type.const_int(1, false).into(),
+            i64_type
+                .const_int(u64::from(instruction.size), false)
+                .into(),
             i32_type.const_int(u64::from(index == 0), false).into(),
             i32_type.const_zero().into(),
             null.into(),
@@ -281,7 +336,51 @@ fn emit_with_inkwell(
             .map_err(|error| error.to_string())?;
 
         match instruction.kind {
-            0 => {
+            0 | 2 | 3 => {
+                match instruction.kind {
+                    0 => {}
+                    2 => {
+                        let source = builder
+                            .build_load(i64_type, rdi.as_pointer_value(), "argument_a")
+                            .map_err(|error| error.to_string())?
+                            .into_int_value();
+                        let source = builder
+                            .build_int_truncate(source, i32_type, "argument_a_i32")
+                            .map_err(|error| error.to_string())?;
+                        let result = builder
+                            .build_int_z_extend(source, i64_type, "result_i64")
+                            .map_err(|error| error.to_string())?;
+                        builder
+                            .build_store(rax.as_pointer_value(), result)
+                            .map_err(|error| error.to_string())?;
+                    }
+                    3 => {
+                        let lhs = builder
+                            .build_load(i64_type, rax.as_pointer_value(), "lhs")
+                            .map_err(|error| error.to_string())?
+                            .into_int_value();
+                        let rhs = builder
+                            .build_load(i64_type, rsi.as_pointer_value(), "argument_b")
+                            .map_err(|error| error.to_string())?
+                            .into_int_value();
+                        let lhs = builder
+                            .build_int_truncate(lhs, i32_type, "lhs_i32")
+                            .map_err(|error| error.to_string())?;
+                        let rhs = builder
+                            .build_int_truncate(rhs, i32_type, "argument_b_i32")
+                            .map_err(|error| error.to_string())?;
+                        let sum = builder
+                            .build_int_add(lhs, rhs, "sum")
+                            .map_err(|error| error.to_string())?;
+                        let result = builder
+                            .build_int_z_extend(sum, i64_type, "sum_i64")
+                            .map_err(|error| error.to_string())?;
+                        builder
+                            .build_store(rax.as_pointer_value(), result)
+                            .map_err(|error| error.to_string())?;
+                    }
+                    _ => unreachable!(),
+                }
                 let next = instructions
                     .get(index + 1)
                     .ok_or_else(|| "NOP is missing a successor".to_owned())?;
@@ -422,7 +521,9 @@ impl Artifact {
 
 unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<u8>, String> {
     let mut context = CallbackContext {
-        bytes: [0x90, 0xc3],
+        // int32_t add(int32_t a, int32_t b) { return a + b; }
+        // mov eax, edi; add eax, esi; ret
+        bytes: [0x89, 0xf8, 0x01, 0xf0, 0xc3],
         error: CString::new("").unwrap(),
     };
     let callbacks = revng_sys::rp_address_space_callbacks {
@@ -431,8 +532,10 @@ unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<
         entry_point: Some(entry_point),
         mapping_count: Some(mapping_count),
         mapping_at: Some(mapping_at),
+        read: Some(read_bytes),
         extra_code_address_count: Some(extra_code_address_count),
         extra_code_address_at: None,
+        release: None,
     };
     let error = unsafe { revng_sys::rp_error_create() };
     if error.is_null() {
@@ -442,6 +545,7 @@ unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<
         revng_sys::rp_manager_create_from_address_space(
             &callbacks,
             0,
+            0,
             ptr::null(),
             b"\0".as_ptr().cast(),
             error,
@@ -450,6 +554,40 @@ unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<
     if manager.is_null() {
         let result = unsafe { pipeline_error(error, "failed to create revng manager") };
         unsafe { revng_sys::rp_error_destroy(error) };
+        return Err(result);
+    }
+
+    let int32 = revng_sys::rp_primitive_type {
+        kind: revng_sys::rp_primitive_kind::RP_PRIMITIVE_KIND_SIGNED,
+        size: 4,
+    };
+    let arguments = [
+        revng_sys::rp_cabi_argument {
+            name: b"a\0".as_ptr().cast(),
+            type_: int32,
+        },
+        revng_sys::rp_cabi_argument {
+            name: b"b\0".as_ptr().cast(),
+            type_: int32,
+        },
+    ];
+    if !unsafe {
+        revng_sys::rp_manager_set_cabi_prototype(
+            manager,
+            b"0x400000:Code_x86_64\0".as_ptr().cast(),
+            b"SystemV_x86_64\0".as_ptr().cast(),
+            b"add\0".as_ptr().cast(),
+            arguments.len() as u64,
+            arguments.as_ptr(),
+            &int32,
+            error,
+        )
+    } {
+        let result = unsafe { pipeline_error(error, "failed to set the add prototype") };
+        unsafe {
+            revng_sys::rp_manager_destroy(manager);
+            revng_sys::rp_error_destroy(error);
+        }
         return Err(result);
     }
 
@@ -470,6 +608,28 @@ unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<
             revng_sys::rp_error_destroy(error);
         }
         return Err(result);
+    }
+
+    if matches!(artifact, Artifact::DecompiledC) {
+        let output = unsafe { revng_sys::rp_manager_decompile_to_c(manager, error) };
+        let result = if output.is_null() {
+            Err(unsafe { pipeline_error(error, "C decompilation failed") })
+        } else {
+            let size = unsafe { revng_sys::rp_buffer_size(output) };
+            let data = unsafe { revng_sys::rp_buffer_data(output) };
+            let bytes = if size == 0 || data.is_null() {
+                Vec::new()
+            } else {
+                unsafe { slice::from_raw_parts(data.cast(), size as usize) }.to_vec()
+            };
+            unsafe { revng_sys::rp_buffer_destroy(output) };
+            Ok(bytes)
+        };
+        unsafe {
+            revng_sys::rp_manager_destroy(manager);
+            revng_sys::rp_error_destroy(error);
+        }
+        return result;
     }
 
     let (step_name, container_name, kind_name) = artifact.pipeline_names();
@@ -568,35 +728,6 @@ fn run(backend_name: &str) -> Result<usize, String> {
     .map(|output| output.len())
 }
 
-fn ptml_to_c(input: &[u8]) -> Result<Vec<u8>, String> {
-    let mut reader = Reader::from_reader(input);
-    reader.config_mut().trim_text(false);
-    let mut output = String::new();
-    loop {
-        match reader.read_event().map_err(|error| error.to_string())? {
-            Event::Text(text) => {
-                let decoded = text.decode().map_err(|error| error.to_string())?;
-                let unescaped =
-                    quick_xml::escape::unescape(&decoded).map_err(|error| error.to_string())?;
-                output.push_str(&unescaped);
-            }
-            Event::CData(text) => {
-                output.push_str(&text.decode().map_err(|error| error.to_string())?);
-            }
-            Event::GeneralRef(reference) => {
-                let reference = reference.decode().map_err(|error| error.to_string())?;
-                let encoded = format!("&{reference};");
-                output.push_str(
-                    &quick_xml::escape::unescape(&encoded).map_err(|error| error.to_string())?,
-                );
-            }
-            Event::Eof => break,
-            _ => {}
-        }
-    }
-    Ok(output.into_bytes())
-}
-
 pub fn decompile_main() {
     let mut arguments = std::env::args().skip(1);
     let backend_name = arguments.next().unwrap_or_else(|| "inkwell".to_owned());
@@ -615,14 +746,7 @@ pub fn decompile_main() {
         env!("REVNG_FULL_PIPELINE"),
         Artifact::DecompiledC,
     ) {
-        Ok(ptml) => {
-            let contents = match ptml_to_c(&ptml) {
-                Ok(contents) => contents,
-                Err(error) => {
-                    eprintln!("failed to decode revng's C+PTML output: {error}");
-                    std::process::exit(1);
-                }
-            };
+        Ok(contents) => {
             if let Err(error) = std::fs::write(Path::new(&output), &contents) {
                 eprintln!("failed to write {output}: {error}");
                 std::process::exit(1);
@@ -662,7 +786,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_x86_64, model_entry, parse_address, ptml_to_c};
+    use super::{decode_x86_64, model_entry, parse_address};
 
     #[test]
     fn parses_revng_meta_address() {
@@ -688,6 +812,24 @@ mod tests {
     }
 
     #[test]
+    fn decodes_add_function() {
+        let decoded = decode_x86_64(&[0x89, 0xf8, 0x01, 0xf0, 0xc3], 0x400000).unwrap();
+        assert_eq!(decoded.len(), 3);
+        assert_eq!(
+            (decoded[0].address, decoded[0].kind, decoded[0].size),
+            (0x400000, 2, 2)
+        );
+        assert_eq!(
+            (decoded[1].address, decoded[1].kind, decoded[1].size),
+            (0x400002, 3, 2)
+        );
+        assert_eq!(
+            (decoded[2].address, decoded[2].kind, decoded[2].size),
+            (0x400004, 1, 1)
+        );
+    }
+
+    #[test]
     fn rejects_unsupported_or_unterminated_input() {
         assert!(decode_x86_64(&[0xcc], 0x400000)
             .unwrap_err()
@@ -695,11 +837,5 @@ mod tests {
         assert!(decode_x86_64(&[0x90], 0x400000)
             .unwrap_err()
             .contains("no RET"));
-    }
-
-    #[test]
-    fn converts_c_ptml_to_plain_c() {
-        let input = br#"<div><span data-token="keyword">if</span> (a &lt; b) {\n</div>"#;
-        assert_eq!(ptml_to_c(input).unwrap(), b"if (a < b) {\\n");
     }
 }

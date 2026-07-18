@@ -16,8 +16,10 @@ REVNG_SDK_MANIFEST=/path/to/revng-sdk.json cargo run -- reference-x86_64
 REVNG_SDK_MANIFEST=/path/to/revng-sdk-with-libtcg.json cargo run -- libtcg
 ```
 
-The example lifts a two-byte x86-64 `NOP; RET` input. It can also select the
-reference and libtcg backends registered in the same process.
+The example lifts a five-byte x86-64 implementation of `int32_t add(int32_t a,
+int32_t b)`. It assigns the entry point a System V x86-64 C ABI prototype and
+can also select the reference and libtcg backends registered in the same
+process.
 
 The wrapped `LLVMModuleRef` remains owned by PipelineC. It is placed in
 `ManuallyDrop` so Inkwell cannot dispose it when the callback returns.
@@ -43,8 +45,11 @@ REVNG_SDK_MANIFEST=/path/to/revng-sdk.json \
   cargo run --bin revng-rust-decompile-example -- reference-x86_64 reference.c
 ```
 
-PipelineC returns the standard C+PTML artifact. The example decodes that markup
-in Rust and writes ordinary C text to the requested output path.
+The manager is backed by range-read callbacks, so creating it does not copy the
+input image. The Inkwell callback uses `rp_binary_view_read_address` to request
+only the instruction bytes it decodes. PipelineC's direct decompilation API
+returns ordinary C text; callers that need token markup can request the PTML
+variant instead.
 
 The SDK manifest used by this executable must contain both pipeline entries:
 

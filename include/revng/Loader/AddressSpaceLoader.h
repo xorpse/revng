@@ -28,6 +28,7 @@ struct LoadedAddressSpace {
 /// Adapt a host address space to rev.ng's model plus flat-buffer
 /// representation.
 llvm::Expected<LoadedAddressSpace>
-loadAddressSpace(const AbstractAddressSpace &AddressSpace);
+loadAddressSpace(const AbstractAddressSpace &AddressSpace,
+                 bool MaterializeData = true);
 
 } // namespace revng::loader

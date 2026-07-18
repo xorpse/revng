@@ -6,6 +6,8 @@
 
 #include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -43,7 +45,9 @@ class LifterRegistry {
 public:
   static llvm::Error registerLifter(llvm::StringRef Name,
                                     LifterFactory Factory,
-                                    bool MakeDefault = false);
+                                    bool MakeDefault = false,
+                                    llvm::ArrayRef<model::Architecture::Values>
+                                      SupportedArchitectures = {});
   static llvm::Expected<std::unique_ptr<ILifter>>
   create(llvm::StringRef Name, const TupleTree<model::Binary> &Model);
   static llvm::Expected<std::unique_ptr<ILifter>>
@@ -55,6 +59,9 @@ public:
   static llvm::StringRef defaultLifter();
   static bool empty();
   static bool hasLifter(const model::Binary &Binary);
+  static std::vector<std::string> names();
+  static bool supportsArchitecture(llvm::StringRef Name,
+                                   model::Architecture::Values Architecture);
 };
 
 } // namespace revng::lift

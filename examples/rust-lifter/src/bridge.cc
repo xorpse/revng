@@ -1,5 +1,6 @@
 #include "include/bridge.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -47,8 +48,7 @@ bool mappingAt(void *Opaque, std::uint64_t Index,
   auto &Context = *static_cast<CallbackContext *>(Opaque);
   Output->start = "0x400000:Code_x86_64";
   Output->virtual_size = 4;
-  Output->contents = Context.Bytes;
-  Output->contents_size = sizeof(Context.Bytes);
+  Output->backing_size = sizeof(Context.Bytes);
   Output->readable = true;
   Output->writeable = false;
   Output->executable = true;
@@ -56,13 +56,34 @@ bool mappingAt(void *Opaque, std::uint64_t Index,
   return true;
 }
 
+bool readBytes(void *Opaque, std::uint64_t MappingIndex,
+               std::uint64_t Offset, std::uint8_t *Destination,
+               std::uint64_t Size) {
+  auto &Context = *static_cast<CallbackContext *>(Opaque);
+  if (MappingIndex != 0 or Offset > sizeof(Context.Bytes)
+      or Size > sizeof(Context.Bytes) - Offset)
+    return false;
+  std::copy_n(Context.Bytes + Offset, Size, Destination);
+  return true;
+}
+
 std::uint64_t extraCodeAddressCount(void *) { return 0; }
 
 bool liftCallback(void *Opaque, const char *ModelYAML,
-                  const std::uint8_t *Binary, std::uint64_t BinarySize,
+                  const rp_binary_view *Binary,
                   const char *const Entries[], std::uint64_t EntryCount,
                   LLVMModuleRef Output, const char **ErrorMessage) {
   auto &Context = *static_cast<CallbackContext *>(Opaque);
+  std::vector<std::uint8_t> Bytes(rp_binary_view_size(Binary));
+  rp_error *ReadError = rp_error_create();
+  bool Read = rp_binary_view_read_offset(Binary, 0, Bytes.size(), Bytes.data(),
+                                         ReadError);
+  rp_error_destroy(ReadError);
+  if (not Read) {
+    Context.Error = "failed to read the input address space";
+    *ErrorMessage = Context.Error.c_str();
+    return false;
+  }
   rust::Vec<rust::String> RustEntries;
   RustEntries.reserve(EntryCount);
   for (std::uint64_t I = 0; I < EntryCount; ++I)
@@ -70,7 +91,7 @@ bool liftCallback(void *Opaque, const char *ModelYAML,
 
   rust::String Result =
       lift(*Context.Backend, rust::Str(ModelYAML),
-           rust::Slice<const std::uint8_t>(Binary, BinarySize),
+           rust::Slice<const std::uint8_t>(Bytes.data(), Bytes.size()),
            std::move(RustEntries), reinterpret_cast<std::uintptr_t>(Output));
   Context.Error.assign(Result.data(), Result.size());
   if (Context.Error.empty())
@@ -122,10 +143,10 @@ rust::String run(RustBackend &Backend, rust::Str PipelinePath,
   CallbackContext Context{.Backend = &Backend};
   rp_address_space_callbacks AddressSpace = {
       &Context,  architecture,          entryPoint, mappingCount,
-      mappingAt, extraCodeAddressCount, nullptr};
+      mappingAt, readBytes, extraCodeAddressCount, nullptr, nullptr};
   rp_error *Error = rp_error_create();
   rp_manager *Manager = rp_manager_create_from_address_space(
-      &AddressSpace, 0, nullptr, "", Error);
+      &AddressSpace, 0, 0, nullptr, "", Error);
   std::string Result;
   if (Manager == nullptr) {
     Result = errorMessage(Error, "failed to create revng manager");

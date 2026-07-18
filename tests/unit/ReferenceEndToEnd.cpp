@@ -3,6 +3,7 @@
 //
 
 #define BOOST_TEST_MODULE ReferenceEndToEnd
+#include <algorithm>
 #include <array>
 
 #include "boost/test/unit_test.hpp"
@@ -13,7 +14,7 @@
 namespace {
 
 struct AddressSpace {
-  std::array<uint8_t, 2> Bytes = { 0x90, 0xc3 };
+  std::array<uint8_t, 5> Bytes = { 0x89, 0xf8, 0x01, 0xf0, 0xc3 };
   std::string Entry = "0x400000:Code_x86_64";
 };
 
@@ -31,13 +32,24 @@ bool mappingAt(void *Opaque, uint64_t Index, rp_address_space_mapping *Output) {
     return false;
   auto &Space = *static_cast<AddressSpace *>(Opaque);
   *Output = { Space.Entry.c_str(),
-              4,
-              Space.Bytes.data(),
+              Space.Bytes.size(),
               Space.Bytes.size(),
               true,
               false,
               true,
               "reference-code" };
+  return true;
+}
+bool readBytes(void *Opaque,
+               uint64_t MappingIndex,
+               uint64_t Offset,
+               uint8_t *Destination,
+               uint64_t Size) {
+  auto &Space = *static_cast<AddressSpace *>(Opaque);
+  if (MappingIndex != 0 or Offset > Space.Bytes.size()
+      or Size > Space.Bytes.size() - Offset)
+    return false;
+  std::copy_n(Space.Bytes.data() + Offset, Size, Destination);
   return true;
 }
 uint64_t extraCodeCount(void *) {
@@ -68,14 +80,20 @@ BOOST_AUTO_TEST_CASE(IsolateThroughEmitC) {
   BOOST_REQUIRE(rp_initialize(2, Arguments, 0, nullptr));
 
   AddressSpace Space;
-  rp_address_space_callbacks Callbacks{ &Space,     architecture,
-                                        entryPoint, mappingCount,
-                                        mappingAt,  extraCodeCount,
+  rp_address_space_callbacks Callbacks{ &Space,
+                                        architecture,
+                                        entryPoint,
+                                        mappingCount,
+                                        mappingAt,
+                                        readBytes,
+                                        extraCodeCount,
+                                        nullptr,
                                         nullptr };
   std::unique_ptr<rp_error, decltype(&rp_error_destroy)>
     Error(rp_error_create(), rp_error_destroy);
   std::unique_ptr<rp_manager, decltype(&rp_manager_destroy)>
     Manager(rp_manager_create_from_address_space(&Callbacks,
+                                                 0,
                                                  0,
                                                  nullptr,
                                                  "",
@@ -84,6 +102,16 @@ BOOST_AUTO_TEST_CASE(IsolateThroughEmitC) {
   if (Manager == nullptr)
     printError(Error.get());
   BOOST_REQUIRE(Manager != nullptr);
+  const rp_primitive_type I32{ RP_PRIMITIVE_KIND_SIGNED, 4 };
+  const rp_cabi_argument AddArguments[] = { { "a", I32 }, { "b", I32 } };
+  BOOST_REQUIRE(rp_manager_set_cabi_prototype(Manager.get(),
+                                              Space.Entry.c_str(),
+                                              "SystemV_x86_64",
+                                              "add",
+                                              2,
+                                              AddArguments,
+                                              &I32,
+                                              Error.get()));
   BOOST_REQUIRE(rp_manager_set_lifter_backend(Manager.get(),
                                               "reference-x86_64",
                                               Error.get()));
@@ -115,6 +143,34 @@ BOOST_AUTO_TEST_CASE(IsolateThroughEmitC) {
     printError(Error.get());
   BOOST_REQUIRE(Output != nullptr);
   BOOST_CHECK(rp_buffer_size(Output.get()) != 0U);
+
+  std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)>
+    DecompiledPTML(rp_manager_decompile_to_ptml(Manager.get(), Error.get()),
+                   rp_buffer_destroy);
+  BOOST_REQUIRE(DecompiledPTML != nullptr);
+  llvm::StringRef PTML(rp_buffer_data(DecompiledPTML.get()),
+                       rp_buffer_size(DecompiledPTML.get()));
+  BOOST_CHECK(PTML.contains("<"));
+  BOOST_CHECK(PTML.contains("add"));
+
+  std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)>
+    DecompiledC(rp_manager_decompile_to_c(Manager.get(), Error.get()),
+                rp_buffer_destroy);
+  BOOST_REQUIRE(DecompiledC != nullptr);
+  llvm::StringRef C(rp_buffer_data(DecompiledC.get()),
+                    rp_buffer_size(DecompiledC.get()));
+  BOOST_CHECK(C.contains("int32_t add(int32_t a, int32_t b)"));
+  BOOST_CHECK(not C.contains("<div"));
+
+  std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)>
+    FunctionC(rp_manager_decompile_function_to_c(Manager.get(),
+                                                 Space.Entry.c_str(),
+                                                 Error.get()),
+              rp_buffer_destroy);
+  BOOST_REQUIRE(FunctionC != nullptr);
+  llvm::StringRef FC(rp_buffer_data(FunctionC.get()),
+                     rp_buffer_size(FunctionC.get()));
+  BOOST_CHECK(FC.contains("int32_t add(int32_t a, int32_t b)"));
 
   Manager.reset();
   BOOST_CHECK(rp_shutdown());
