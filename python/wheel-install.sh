@@ -4,14 +4,7 @@
 #
 set -euo pipefail
 
-ARGS=(
-  --quiet
-  --compile
-  --no-index
-  --no-build-isolation
-  --ignore-installed
-  --upgrade
-  --no-deps
-  --target "${DESTDIR:-}$2/$4"
-)
-"$3" -m pip install "${ARGS[@]}" "$1"
+INSTALL_TARGET="${DESTDIR:-}$2/$4"
+
+"$3" -m zipfile -e "$1" "$INSTALL_TARGET"
+"$3" -m compileall -q "$INSTALL_TARGET"
