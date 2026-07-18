@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::mem::ManuallyDrop;
+use std::path::Path;
 use std::ptr;
 use std::slice;
 
 use inkwell::module::Module;
 use inkwell::values::{AsValueRef, BasicMetadataValueEnum, PointerValue};
 use inkwell::AddressSpace;
+use quick_xml::events::Event;
+use quick_xml::Reader;
 
 #[cxx::bridge(namespace = "revng_inkwell")]
 mod ffi {
@@ -398,7 +401,26 @@ unsafe fn pipeline_error(error: *mut revng_sys::rp_error, fallback: &str) -> Str
     fallback.into()
 }
 
-unsafe fn run_initialized(backend_name: &str) -> Result<u64, String> {
+#[derive(Clone, Copy)]
+enum Artifact {
+    LiftedModule,
+    DecompiledC,
+}
+
+impl Artifact {
+    fn pipeline_names(self) -> (&'static [u8], &'static [u8], &'static [u8]) {
+        match self {
+            Self::LiftedModule => (b"lift\0", b"root.bc.zstd\0", b"root\0"),
+            Self::DecompiledC => (
+                b"emit-c-as-single-file\0",
+                b"decompiled.c\0",
+                b"decompiled-to-c\0",
+            ),
+        }
+    }
+}
+
+unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<u8>, String> {
     let mut context = CallbackContext {
         bytes: [0x90, 0xc3],
         error: CString::new("").unwrap(),
@@ -450,22 +472,23 @@ unsafe fn run_initialized(backend_name: &str) -> Result<u64, String> {
         return Err(result);
     }
 
+    let (step_name, container_name, kind_name) = artifact.pipeline_names();
     let step =
-        unsafe { revng_sys::rp_manager_get_step_from_name(manager, b"lift\0".as_ptr().cast()) };
+        unsafe { revng_sys::rp_manager_get_step_from_name(manager, step_name.as_ptr().cast()) };
     let identifier = unsafe {
         revng_sys::rp_manager_get_container_identifier_from_name(
             manager,
-            b"root.bc.zstd\0".as_ptr().cast(),
+            container_name.as_ptr().cast(),
         )
     };
     let kind =
-        unsafe { revng_sys::rp_manager_get_kind_from_name(manager, b"root\0".as_ptr().cast()) };
+        unsafe { revng_sys::rp_manager_get_kind_from_name(manager, kind_name.as_ptr().cast()) };
     if step.is_null() || identifier.is_null() || kind.is_null() {
         unsafe {
             revng_sys::rp_manager_destroy(manager);
             revng_sys::rp_error_destroy(error);
         }
-        return Err("the example pipeline has no lift/root output".into());
+        return Err("the requested artifact is not present in the configured pipeline".into());
     }
 
     let container = unsafe { revng_sys::rp_step_get_container(step, identifier) };
@@ -480,7 +503,7 @@ unsafe fn run_initialized(backend_name: &str) -> Result<u64, String> {
             revng_sys::rp_manager_destroy(manager);
             revng_sys::rp_error_destroy(error);
         }
-        return Err("failed to create the lift target".into());
+        return Err("failed to create the artifact target".into());
     }
     let targets = [target.cast_const()];
     let module = unsafe {
@@ -495,14 +518,20 @@ unsafe fn run_initialized(backend_name: &str) -> Result<u64, String> {
     };
     unsafe { revng_sys::rp_target_destroy(target) };
     let result = if module.is_null() {
-        Err(unsafe { pipeline_error(error, "lift failed") })
+        Err(unsafe { pipeline_error(error, "artifact production failed") })
     } else {
         let size = unsafe { revng_sys::rp_buffer_size(module) };
-        unsafe { revng_sys::rp_buffer_destroy(module) };
-        if size == 0 {
-            Err("revng produced an empty module".into())
+        let data = unsafe { revng_sys::rp_buffer_data(module) };
+        let bytes = if size == 0 || data.is_null() {
+            Vec::new()
         } else {
-            Ok(size)
+            unsafe { slice::from_raw_parts(data.cast(), size as usize) }.to_vec()
+        };
+        unsafe { revng_sys::rp_buffer_destroy(module) };
+        if bytes.is_empty() {
+            Err("revng produced an empty artifact".into())
+        } else {
+            Ok(bytes)
         }
     };
     unsafe {
@@ -512,22 +541,102 @@ unsafe fn run_initialized(backend_name: &str) -> Result<u64, String> {
     result
 }
 
-fn run(backend_name: &str) -> Result<u64, String> {
-    let pipeline_option = CString::new(format!(
-        "--pipeline-path={}",
-        env!("REVNG_EXAMPLE_PIPELINE")
-    ))
-    .unwrap();
+fn run_artifact(
+    backend_name: &str,
+    pipeline_path: &str,
+    artifact: Artifact,
+) -> Result<Vec<u8>, String> {
+    let pipeline_option = CString::new(format!("--pipeline-path={}", pipeline_path)).unwrap();
     let program = CString::new("revng-rust-inkwell-lifter-example").unwrap();
     let arguments = [program.as_ptr(), pipeline_option.as_ptr()];
     if !unsafe { revng_sys::rp_initialize(2, arguments.as_ptr(), 0, ptr::null_mut()) } {
         return Err("rp_initialize failed".into());
     }
-    let result = unsafe { run_initialized(backend_name) };
+    let result = unsafe { run_initialized(backend_name, artifact) };
     if !unsafe { revng_sys::rp_shutdown() } && result.is_ok() {
         return Err("rp_shutdown failed".into());
     }
     result
+}
+
+fn run(backend_name: &str) -> Result<usize, String> {
+    run_artifact(
+        backend_name,
+        env!("REVNG_EXAMPLE_PIPELINE"),
+        Artifact::LiftedModule,
+    )
+    .map(|output| output.len())
+}
+
+fn ptml_to_c(input: &[u8]) -> Result<Vec<u8>, String> {
+    let mut reader = Reader::from_reader(input);
+    reader.config_mut().trim_text(false);
+    let mut output = String::new();
+    loop {
+        match reader.read_event().map_err(|error| error.to_string())? {
+            Event::Text(text) => {
+                let decoded = text.decode().map_err(|error| error.to_string())?;
+                let unescaped =
+                    quick_xml::escape::unescape(&decoded).map_err(|error| error.to_string())?;
+                output.push_str(&unescaped);
+            }
+            Event::CData(text) => {
+                output.push_str(&text.decode().map_err(|error| error.to_string())?);
+            }
+            Event::GeneralRef(reference) => {
+                let reference = reference.decode().map_err(|error| error.to_string())?;
+                let encoded = format!("&{reference};");
+                output.push_str(
+                    &quick_xml::escape::unescape(&encoded).map_err(|error| error.to_string())?,
+                );
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    Ok(output.into_bytes())
+}
+
+pub fn decompile_main() {
+    let mut arguments = std::env::args().skip(1);
+    let backend_name = arguments.next().unwrap_or_else(|| "inkwell".to_owned());
+    let output = arguments
+        .next()
+        .unwrap_or_else(|| "decompiled.c".to_owned());
+    if arguments.next().is_some()
+        || !matches!(backend_name.as_str(), "inkwell" | "reference-x86_64")
+    {
+        eprintln!("usage: revng-rust-decompile-example [inkwell|reference-x86_64] [output.c]");
+        std::process::exit(2);
+    }
+
+    match run_artifact(
+        &backend_name,
+        env!("REVNG_FULL_PIPELINE"),
+        Artifact::DecompiledC,
+    ) {
+        Ok(ptml) => {
+            let contents = match ptml_to_c(&ptml) {
+                Ok(contents) => contents,
+                Err(error) => {
+                    eprintln!("failed to decode revng's C+PTML output: {error}");
+                    std::process::exit(1);
+                }
+            };
+            if let Err(error) = std::fs::write(Path::new(&output), &contents) {
+                eprintln!("failed to write {output}: {error}");
+                std::process::exit(1);
+            }
+            println!(
+                "{backend_name} produced {} bytes of decompiled C in {output}",
+                contents.len()
+            );
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    }
 }
 
 fn main() {
@@ -553,7 +662,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_x86_64, model_entry, parse_address};
+    use super::{decode_x86_64, model_entry, parse_address, ptml_to_c};
 
     #[test]
     fn parses_revng_meta_address() {
@@ -586,5 +695,11 @@ mod tests {
         assert!(decode_x86_64(&[0x90], 0x400000)
             .unwrap_err()
             .contains("no RET"));
+    }
+
+    #[test]
+    fn converts_c_ptml_to_plain_c() {
+        let input = br#"<div><span data-token="keyword">if</span> (a &lt; b) {\n</div>"#;
+        assert_eq!(ptml_to_c(input).unwrap(), b"if (a < b) {\\n");
     }
 }

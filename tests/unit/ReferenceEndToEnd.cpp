@@ -7,9 +7,7 @@
 
 #include "boost/test/unit_test.hpp"
 
-#include "revng/ABI/DefaultFunctionPrototype.h"
 #include "revng/PipelineC/PipelineC.h"
-#include "revng/Pipes/ModelGlobal.h"
 #include "revng/UnitTestHelpers/UnitTestHelpers.h"
 
 namespace {
@@ -89,13 +87,6 @@ BOOST_AUTO_TEST_CASE(IsolateThroughEmitC) {
   BOOST_REQUIRE(rp_manager_set_lifter_backend(Manager.get(),
                                               "reference-x86_64",
                                               Error.get()));
-
-  auto &Model = revng::getWritableModelFromContext(Manager->context());
-  model::Function Function;
-  Function.Entry() = MetaAddress::fromPC(model::Architecture::x86_64, 0x400000);
-  Function.Prototype() = abi::registerDefaultFunctionPrototype(*Model);
-  Model->Functions().insert(std::move(Function));
-  Manager->recalculateAllPossibleTargets();
 
   rp_step *Step = rp_manager_get_step_from_name(Manager.get(), "emit-c");
   const rp_container_identifier
