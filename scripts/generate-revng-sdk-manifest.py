@@ -131,6 +131,23 @@ def main() -> None:
     if not component_llvm and not (llvm_lib / f"libLLVM{extension}").exists():
         raise SystemExit(f"LLVM directory has neither component nor monolithic {extension} libraries")
 
+    # Full decompiler pipelines are assembled through constructor-registered
+    # pipes and LLVM passes. Retain their DSOs in consumers even though no
+    # ordinary symbol reference pulls them in. Minimal SDK builds intentionally
+    # omit Pipebox and therefore do not need this set.
+    registry_libraries = []
+    pipebox = revng_lib / f"librevngPipebox{extension}"
+    if pipebox.exists():
+        registry_candidates = [
+            pipebox,
+            revng_lib / f"librevngFunctionCallIdentification{extension}",
+            revng_lib / f"librevngValueMaterializer{extension}",
+            *sorted(analyses.glob(f"librevng*{extension}")),
+        ]
+        registry_libraries = [
+            relative(path, base) for path in dict.fromkeys(registry_candidates) if path.exists()
+        ]
+
     manifest = {
         "schema_version": 1,
         "target_os": args.target_os,
@@ -158,6 +175,7 @@ def main() -> None:
         ],
         "link_files": link_files,
         "backend_libraries": backends,
+        "registry_libraries": registry_libraries,
         "pipelines": pipelines,
     }
     output.write_text(json.dumps(manifest, indent=2) + "\n")

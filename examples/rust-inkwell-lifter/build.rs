@@ -42,6 +42,13 @@ fn main() {
         "cargo:rustc-env=REVNG_EXAMPLE_PIPELINE={}",
         pipeline.display()
     );
+    let full_pipeline = sdk
+        .pipeline("full")
+        .unwrap_or_else(|| panic!("SDK manifest has no 'full' pipeline"));
+    println!(
+        "cargo:rustc-env=REVNG_FULL_PIPELINE={}",
+        full_pipeline.display()
+    );
     sdk.emit_cargo_rerun_directives();
     println!("cargo:rerun-if-changed=src/main.rs");
     println!("cargo:rerun-if-changed=src/revng_tags.cc");

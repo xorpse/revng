@@ -25,6 +25,8 @@ pub struct Manifest {
     #[serde(default)]
     pub backend_libraries: BTreeMap<String, PathBuf>,
     #[serde(default)]
+    pub registry_libraries: Vec<PathBuf>,
+    #[serde(default)]
     pub pipelines: BTreeMap<String, PathBuf>,
 }
 
@@ -175,11 +177,27 @@ impl Sdk {
             println!("cargo:rustc-link-lib=dylib={library}");
         }
 
-        if self.manifest.target_os == "linux" && !self.manifest.backend_libraries.is_empty() {
+        let retained_libraries = self
+            .manifest
+            .backend_libraries
+            .values()
+            .chain(self.manifest.registry_libraries.iter());
+        if self.manifest.target_os == "linux"
+            && (!self.manifest.backend_libraries.is_empty()
+                || !self.manifest.registry_libraries.is_empty())
+        {
             println!("cargo:rustc-link-arg=-Wl,--no-as-needed");
         }
-        for path in self.manifest.backend_libraries.values() {
-            println!("cargo:rustc-link-arg={}", self.resolve(path).display());
+        for path in retained_libraries {
+            let path = self.resolve(path);
+            if self.manifest.target_os == "macos" {
+                println!(
+                    "cargo:rustc-link-arg=-Wl,-needed_library,{}",
+                    path.display()
+                );
+            } else {
+                println!("cargo:rustc-link-arg={}", path.display());
+            }
         }
         if self.manifest.target_os == "linux" {
             println!("cargo:rustc-link-arg=-Wl,--disable-new-dtags");
@@ -206,6 +224,12 @@ impl Sdk {
         required.extend(
             self.manifest
                 .link_files
+                .iter()
+                .map(|path| self.resolve(path)),
+        );
+        required.extend(
+            self.manifest
+                .registry_libraries
                 .iter()
                 .map(|path| self.resolve(path)),
         );
@@ -253,6 +277,7 @@ mod tests {
             link_libraries: vec!["revngPipelineC".into()],
             link_files: Vec::new(),
             backend_libraries: BTreeMap::new(),
+            registry_libraries: Vec::new(),
             pipelines: BTreeMap::new(),
         };
         let json = serde_json::to_string(&manifest).unwrap();
@@ -288,6 +313,7 @@ mod tests {
             link_libraries: vec!["revngPipelineC".into()],
             link_files: Vec::new(),
             backend_libraries: BTreeMap::from([("test".into(), PathBuf::from("lib/backend.so"))]),
+            registry_libraries: Vec::new(),
             pipelines: BTreeMap::from([("lift".into(), PathBuf::from("pipelines/lift.yml"))]),
         };
         fs::write(

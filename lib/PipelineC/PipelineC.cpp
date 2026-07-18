@@ -22,6 +22,7 @@
 #include "llvm/Support/PluginLoader.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "revng/ABI/DefaultFunctionPrototype.h"
 #include "revng/Lift/AbstractLifter.h"
 #include "revng/Loader/AddressSpaceLoader.h"
 #include "revng/Pipeline/AllRegistries.h"
@@ -413,6 +414,18 @@ _rp_manager_create_from_address_space(const rp_address_space_callbacks
     return nullptr;
 
   auto LoadedModel = std::move(Loaded->Model);
+  // An entry point supplied by an embedding application is also a known
+  // function entry. Seed it here so PipelineC consumers can drive pipelines
+  // beyond lifting without reaching into revng's C++ model implementation.
+  if (LoadedModel->EntryPoint().isValid()
+      and LoadedModel->DefaultABI() != model::ABI::Invalid) {
+    LoadedModel->DefaultPrototype() =
+      abi::registerDefaultFunctionPrototype(*LoadedModel);
+    model::Function Function;
+    Function.Entry() = LoadedModel->EntryPoint();
+    Function.Prototype() = LoadedModel->DefaultPrototype();
+    LoadedModel->Functions().insert(std::move(Function));
+  }
   auto &WritableModel = revng::getWritableModelFromContext(Manager->context());
   WritableModel = std::move(LoadedModel);
   llvm::StringRef Bytes(reinterpret_cast<const char *>(Loaded->Data.data()),

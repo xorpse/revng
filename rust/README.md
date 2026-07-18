@@ -12,8 +12,10 @@ python sources/revng/scripts/generate-revng-sdk-manifest.py \
   --build-dir sources/revng/build/revng/complete-off \
   --llvm-dir root/lib64/llvm/llvm \
   --cxx root/bin/clang++ \
+  --runtime-lib-dir root/lib64 \
   --runtime-lib-dir root/lib64/llvm/clang-release/lib/x86_64-unknown-linux-gnu \
   --pipeline address-space=sources/revng/tests/unit/PipelineCAddressSpace.yml \
+  --pipeline full=sources/revng/share/revng/pipelines/revng-pipelines.yml \
   --output revng-sdk.json
 ```
 
@@ -50,5 +52,6 @@ python scripts/generate-revng-sdk-manifest.py \
   --llvm-dir revng-llvm-install \
   --cxx /usr/bin/clang++ \
   --pipeline address-space=stage-decompiler/share/revng/pipelines/address-space.yml \
+  --pipeline full=stage-decompiler/share/revng/pipelines/revng-pipelines.yml \
   --output stage-decompiler/revng-sdk.json
 ```

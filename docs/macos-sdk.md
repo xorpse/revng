@@ -155,6 +155,7 @@ Generate the relocatable descriptor used by the Rust examples:
   --llvm-dir revng-llvm-install \
   --cxx /usr/bin/clang++ \
   --pipeline address-space=stage-decompiler/share/revng/pipelines/address-space.yml \
+  --pipeline full=stage-decompiler/share/revng/pipelines/revng-pipelines.yml \
   --output stage-decompiler/revng-sdk.json
 ```
 

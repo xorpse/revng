@@ -256,6 +256,7 @@ CXX_RUNTIME_DIR="$(dirname "$CXX_RUNTIME_LIBRARY")"
   --cxx "$LLVM_INSTALL/bin/clang++" \
   --runtime-lib-dir "$CXX_RUNTIME_DIR" \
   --pipeline address-space="$SDK_ROOT/share/revng/pipelines/address-space.yml" \
+  --pipeline full="$SDK_ROOT/share/revng/pipelines/revng-pipelines.yml" \
   --output "$SDK_ROOT/revng-sdk.json"
 ```
 
