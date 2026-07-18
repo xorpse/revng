@@ -1,2 +1,18 @@
 .clang-format
-.mypy_cache
+
+# Out-of-tree and local CMake builds
+/build/
+/build-*/
+/cmake-build-*/
+
+# Python caches and test output
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Rust build output (Cargo.lock files remain visible)
+target/

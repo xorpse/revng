@@ -16,7 +16,7 @@
 namespace revng::pipes {
 
 class CliftFunctionContainer
-  : public pipeline::Container<CliftFunctionContainer> {
+    : public pipeline::Container<CliftFunctionContainer> {
 public:
   static const char ID;
   static constexpr auto Name = "clift-functions";
@@ -28,13 +28,16 @@ private:
   mlir::OwningOpRef<mlir::ModuleOp> Module;
 
 public:
-  explicit CliftFunctionContainer(const llvm::StringRef Name) :
-    pipeline::Container<CliftFunctionContainer>(Name) {
+  explicit CliftFunctionContainer(const llvm::StringRef Name)
+      : pipeline::Container<CliftFunctionContainer>(Name) {
     clearImpl();
   }
 
   mlir::MLIRContext *getContext() const { return Context.get(); }
   mlir::ModuleOp getModule() const { return *Module; }
+  const void *getMLIRModuleHandle() const override {
+    return getModule().getAsOpaquePointer();
+  }
   void setModule(mlir::OwningOpRef<mlir::ModuleOp> &&NewModule);
 
   std::unique_ptr<pipeline::ContainerBase>
@@ -55,7 +58,7 @@ public:
                          const pipeline::Target &Target) const override;
 
   static std::vector<pipeline::Kind *> possibleKinds() {
-    return { &kinds::CliftFunction };
+    return {&kinds::CliftFunction};
   }
 };
 
@@ -71,13 +74,16 @@ private:
   mlir::OwningOpRef<mlir::ModuleOp> Module;
 
 public:
-  explicit CliftContainer(const llvm::StringRef Name) :
-    pipeline::Container<CliftContainer>(Name) {
+  explicit CliftContainer(const llvm::StringRef Name)
+      : pipeline::Container<CliftContainer>(Name) {
     clearImpl();
   }
 
   mlir::MLIRContext *getContext() const { return Context.get(); }
   mlir::ModuleOp getModule() const { return *Module; }
+  const void *getMLIRModuleHandle() const override {
+    return getModule().getAsOpaquePointer();
+  }
   void setModule(mlir::OwningOpRef<mlir::ModuleOp> &&NewModule) {
     Module = std::move(NewModule);
   }
@@ -103,7 +109,7 @@ public:
                          const pipeline::Target &Target) const override;
 
   static std::vector<pipeline::Kind *> possibleKinds() {
-    return { &kinds::CliftModule };
+    return {&kinds::CliftModule};
   }
 };
 

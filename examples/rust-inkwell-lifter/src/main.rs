@@ -1,11 +1,9 @@
 use std::collections::BTreeMap;
 use std::ffi::{c_char, c_void, CStr, CString};
-use std::mem::ManuallyDrop;
 use std::path::Path;
 use std::ptr;
 use std::slice;
 
-use inkwell::module::Module;
 use inkwell::values::{AsValueRef, BasicMetadataValueEnum, PointerValue};
 use inkwell::AddressSpace;
 
@@ -218,9 +216,7 @@ fn emit_with_inkwell(
         return Err("no decoded instructions".into());
     }
 
-    // PipelineC owns this LLVMModuleRef. Module::new normally takes ownership,
-    // so ManuallyDrop prevents Inkwell from disposing revng's module.
-    let module = ManuallyDrop::new(unsafe { Module::new(output as _) });
+    let module = unsafe { revng_inkwell::BorrowedModule::from_raw(output as _) };
     let context = module.get_context();
     let builder = context.create_builder();
     let i64_type = context.i64_type();
@@ -506,17 +502,16 @@ enum Artifact {
     DecompiledC,
 }
 
-impl Artifact {
-    fn pipeline_names(self) -> (&'static [u8], &'static [u8], &'static [u8]) {
-        match self {
-            Self::LiftedModule => (b"lift\0", b"root.bc.zstd\0", b"root\0"),
-            Self::DecompiledC => (
-                b"emit-c-as-single-file\0",
-                b"decompiled.c\0",
-                b"decompiled-to-c\0",
-            ),
-        }
-    }
+unsafe fn take_buffer(buffer: *mut revng_sys::rp_buffer) -> Vec<u8> {
+    let size = unsafe { revng_sys::rp_buffer_size(buffer) };
+    let data = unsafe { revng_sys::rp_buffer_data(buffer) };
+    let bytes = if size == 0 || data.is_null() {
+        Vec::new()
+    } else {
+        unsafe { slice::from_raw_parts(data.cast(), size as usize) }.to_vec()
+    };
+    unsafe { revng_sys::rp_buffer_destroy(buffer) };
+    bytes
 }
 
 unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<u8>, String> {
@@ -610,88 +605,75 @@ unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<
         return Err(result);
     }
 
-    if matches!(artifact, Artifact::DecompiledC) {
-        let output = unsafe { revng_sys::rp_manager_decompile_to_c(manager, error) };
-        let result = if output.is_null() {
-            Err(unsafe { pipeline_error(error, "C decompilation failed") })
-        } else {
-            let size = unsafe { revng_sys::rp_buffer_size(output) };
-            let data = unsafe { revng_sys::rp_buffer_data(output) };
-            let bytes = if size == 0 || data.is_null() {
-                Vec::new()
-            } else {
-                unsafe { slice::from_raw_parts(data.cast(), size as usize) }.to_vec()
-            };
-            unsafe { revng_sys::rp_buffer_destroy(output) };
-            Ok(bytes)
-        };
-        unsafe {
-            revng_sys::rp_manager_destroy(manager);
-            revng_sys::rp_error_destroy(error);
-        }
-        return result;
-    }
-
-    let (step_name, container_name, kind_name) = artifact.pipeline_names();
-    let step =
-        unsafe { revng_sys::rp_manager_get_step_from_name(manager, step_name.as_ptr().cast()) };
-    let identifier = unsafe {
-        revng_sys::rp_manager_get_container_identifier_from_name(
+    // Materialize the lifted module, run ordinary Inkwell LLVM passes on the
+    // borrowed transaction, and commit it before requesting later artifacts.
+    let lifted = unsafe {
+        revng_sys::rp_manager_produce_artifact(
             manager,
-            container_name.as_ptr().cast(),
-        )
-    };
-    let kind =
-        unsafe { revng_sys::rp_manager_get_kind_from_name(manager, kind_name.as_ptr().cast()) };
-    if step.is_null() || identifier.is_null() || kind.is_null() {
-        unsafe {
-            revng_sys::rp_manager_destroy(manager);
-            revng_sys::rp_error_destroy(error);
-        }
-        return Err("the requested artifact is not present in the configured pipeline".into());
-    }
-
-    let container = unsafe { revng_sys::rp_step_get_container(step, identifier) };
-    // PipelineC requires a non-null array even when the component count is 0.
-    let empty_path = [ptr::null()];
-    let target = unsafe { revng_sys::rp_target_create(kind, 0, empty_path.as_ptr()) };
-    if container.is_null() || target.is_null() {
-        if !target.is_null() {
-            unsafe { revng_sys::rp_target_destroy(target) };
-        }
-        unsafe {
-            revng_sys::rp_manager_destroy(manager);
-            revng_sys::rp_error_destroy(error);
-        }
-        return Err("failed to create the artifact target".into());
-    }
-    let targets = [target.cast_const()];
-    let module = unsafe {
-        revng_sys::rp_manager_produce_targets(
-            manager,
-            step,
-            container,
-            targets.len() as u64,
-            targets.as_ptr(),
+            b"lift\0".as_ptr().cast(),
+            b"root.bc.zstd\0".as_ptr().cast(),
+            b"root\0".as_ptr().cast(),
+            0,
+            ptr::null(),
             error,
         )
     };
-    unsafe { revng_sys::rp_target_destroy(target) };
-    let result = if module.is_null() {
-        Err(unsafe { pipeline_error(error, "artifact production failed") })
+    if lifted.is_null() {
+        let result = unsafe { pipeline_error(error, "lifting failed") };
+        unsafe {
+            revng_sys::rp_manager_destroy(manager);
+            revng_sys::rp_error_destroy(error);
+        }
+        return Err(result);
+    }
+    unsafe { revng_sys::rp_buffer_destroy(lifted) };
+
+    let transformed = unsafe {
+        revng_inkwell::transform_llvm_module(
+            manager,
+            CStr::from_bytes_with_nul_unchecked(b"lift\0"),
+            CStr::from_bytes_with_nul_unchecked(b"root.bc.zstd\0"),
+            error,
+            |module| module.run_passes("instcombine,reassociate"),
+        )
+    };
+    if !transformed {
+        let result = unsafe { pipeline_error(error, "Inkwell transform failed") };
+        unsafe {
+            revng_sys::rp_manager_destroy(manager);
+            revng_sys::rp_error_destroy(error);
+        }
+        return Err(result);
+    }
+
+    let result = if matches!(artifact, Artifact::DecompiledC) {
+        let output = unsafe { revng_sys::rp_manager_decompile_to_c(manager, error) };
+        if output.is_null() {
+            Err(unsafe { pipeline_error(error, "C decompilation failed") })
+        } else {
+            Ok(unsafe { take_buffer(output) })
+        }
     } else {
-        let size = unsafe { revng_sys::rp_buffer_size(module) };
-        let data = unsafe { revng_sys::rp_buffer_data(module) };
-        let bytes = if size == 0 || data.is_null() {
-            Vec::new()
-        } else {
-            unsafe { slice::from_raw_parts(data.cast(), size as usize) }.to_vec()
+        let output = unsafe {
+            revng_sys::rp_manager_produce_artifact(
+                manager,
+                b"lift\0".as_ptr().cast(),
+                b"root.bc.zstd\0".as_ptr().cast(),
+                b"root\0".as_ptr().cast(),
+                0,
+                ptr::null(),
+                error,
+            )
         };
-        unsafe { revng_sys::rp_buffer_destroy(module) };
-        if bytes.is_empty() {
-            Err("revng produced an empty artifact".into())
+        if output.is_null() {
+            Err(unsafe { pipeline_error(error, "artifact production failed") })
         } else {
-            Ok(bytes)
+            let bytes = unsafe { take_buffer(output) };
+            if bytes.is_empty() {
+                Err("revng produced an empty artifact".into())
+            } else {
+                Ok(bytes)
+            }
         }
     };
     unsafe {

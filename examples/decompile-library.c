@@ -143,6 +143,34 @@ int main(int argc, char **argv) {
            || !contains(data, size, "int32_t add(int32_t a, int32_t b)");
   rp_buffer_destroy(decompiled);
 
+  rp_buffer *artifact = rp_manager_produce_artifact(manager,
+                                                    "emit-c-as-single-file",
+                                                    "decompiled.c",
+                                                    "decompiled-to-c",
+                                                    0,
+                                                    NULL,
+                                                    error);
+  if (artifact == NULL) {
+    print_error("direct artifact production", error);
+    result = 1;
+    goto destroy_manager;
+  }
+  if (!contains(rp_buffer_data(artifact), rp_buffer_size(artifact), "add"))
+    result = 1;
+  rp_buffer_destroy(artifact);
+
+  rp_buffer *bundle = rp_manager_decompile_to_c_bundle(manager, error);
+  if (bundle == NULL) {
+    print_error("C bundle production", error);
+    result = 1;
+    goto destroy_manager;
+  }
+  const uint8_t *bundle_data = (const uint8_t *) rp_buffer_data(bundle);
+  if (rp_buffer_size(bundle) < 2 || bundle_data[0] != 0x1f
+      || bundle_data[1] != 0x8b)
+    result = 1;
+  rp_buffer_destroy(bundle);
+
 destroy_manager:
   rp_manager_destroy(manager);
 shutdown:

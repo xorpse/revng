@@ -289,12 +289,39 @@ rp_buffer * /*owning*/
 rp_manager_decompile_to_ptml(rp_manager *manager, rp_error *error);
 rp_buffer * /*owning*/
 rp_manager_decompile_to_c(rp_manager *manager, rp_error *error);
+/** Return a gzip-compressed tar archive containing compilable C and headers. */
+rp_buffer * /*owning*/
+rp_manager_decompile_to_c_bundle(rp_manager *manager, rp_error *error);
 rp_buffer * /*owning*/
 rp_manager_decompile_function_to_ptml(rp_manager *manager, const char *address,
                                       rp_error *error);
 rp_buffer * /*owning*/
 rp_manager_decompile_function_to_c(rp_manager *manager, const char *address,
                                    rp_error *error);
+
+/** Produce one pipeline artifact and return its extracted payload in memory. */
+rp_buffer * /*owning*/
+rp_manager_produce_artifact(rp_manager *manager, const char *step_name,
+                            const char *container_name, const char *kind_name,
+                            uint64_t path_components_count,
+                            const char *path_components[], rp_error *error);
+LENGTH_HINT(rp_manager_produce_artifact, 5, 4)
+
+/**
+ * Transactionally transform an LLVM or MLIR container. The module is borrowed
+ * only for the callback. A successful callback is verified and committed;
+ * failure leaves the pipeline unchanged. Downstream artifacts are invalidated.
+ */
+bool rp_manager_transform_llvm_module(rp_manager *manager,
+                                      const char *step_name,
+                                      const char *container_name,
+                                      const rp_llvm_module_callbacks *callbacks,
+                                      rp_error *error);
+bool rp_manager_transform_mlir_module(rp_manager *manager,
+                                      const char *step_name,
+                                      const char *container_name,
+                                      const rp_mlir_module_callbacks *callbacks,
+                                      rp_error *error);
 
 /**
  * Delete the manager object and destroy all the resourced acquired by it.

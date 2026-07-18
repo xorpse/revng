@@ -21,8 +21,10 @@ int32_t b)`. It assigns the entry point a System V x86-64 C ABI prototype and
 can also select the reference and libtcg backends registered in the same
 process.
 
-The wrapped `LLVMModuleRef` remains owned by PipelineC. It is placed in
-`ManuallyDrop` so Inkwell cannot dispose it when the callback returns.
+The reusable `revng-inkwell` adapter presents PipelineC's `LLVMModuleRef` as a
+scoped `BorrowedModule`. It hides Inkwell's owning raw-handle constructor, so
+backend code cannot accidentally dispose revng's module when the callback
+returns.
 
 Native macOS AArch64 support is experimental and uses revng's pinned LLVM/MLIR
 fork. It supports the `inkwell` and `reference-x86_64` backends. libtcg remains

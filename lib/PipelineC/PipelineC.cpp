@@ -18,8 +18,11 @@
 #include <type_traits>
 #include <vector>
 
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Verifier.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Support/CBindingWrapping.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
@@ -46,7 +49,9 @@
 #include "revng/Pipes/ModelGlobal.h"
 #include "revng/Pipes/PipelineManager.h"
 #include "revng/Support/Assert.h"
+#include "revng/Support/GzipTarFile.h"
 #include "revng/Support/InitRevng.h"
+#include "revng/Support/ResourceFinder.h"
 #include "revng/TupleTree/TupleTreeDiff.h"
 
 #include "Tracing/Wrapper.h"
@@ -2144,6 +2149,251 @@ static uint64_t _rp_manager_get_context_commit_index(rp_manager *manager) {
   return manager->context().getCommitIndex();
 }
 
+static pipeline::Step *findStep(rp_manager &Manager, llvm::StringRef Name) {
+  for (pipeline::Step &Step : Manager.getRunner())
+    if (Step.getName() == Name)
+      return &Step;
+  return nullptr;
+}
+
+static rp_container *findContainer(pipeline::Step &Step, llvm::StringRef Name) {
+  if (not Step.containers().isContainerRegistered(Name))
+    return nullptr;
+  Step.containers()[Name];
+  auto Iterator = Step.containers().find(Name);
+  return Iterator == Step.containers().end() ? nullptr : &*Iterator;
+}
+
+static std::unique_ptr<rp_buffer>
+produceArtifact(rp_manager &Manager, llvm::StringRef StepName,
+                llvm::StringRef ContainerName, llvm::StringRef KindName,
+                llvm::ArrayRef<const char *> PathComponents, rp_error *Error) {
+  pipeline::Step *Step = findStep(Manager, StepName);
+  if (Step == nullptr) {
+    llvmErrorToRpError(revng::createError("unknown pipeline step: " + StepName),
+                       Error);
+    return nullptr;
+  }
+  rp_container *Container = findContainer(*Step, ContainerName);
+  if (Container == nullptr or Container->second == nullptr) {
+    llvmErrorToRpError(
+        revng::createError("unknown pipeline container: " + ContainerName),
+        Error);
+    return nullptr;
+  }
+  const pipeline::Kind *Kind = Manager.getKind(KindName);
+  if (Kind == nullptr) {
+    llvmErrorToRpError(revng::createError("unknown pipeline kind: " + KindName),
+                       Error);
+    return nullptr;
+  }
+  if (Kind->rank().depth() != PathComponents.size()) {
+    llvmErrorToRpError(revng::createError("artifact target path has the wrong "
+                                          "number of components"),
+                       Error);
+    return nullptr;
+  }
+  pipeline::Target::PathComponents Path;
+  Path.reserve(PathComponents.size());
+  for (const char *Component : PathComponents) {
+    if (Component == nullptr) {
+      llvmErrorToRpError(revng::createError("null artifact path component"),
+                         Error);
+      return nullptr;
+    }
+    Path.emplace_back(Component);
+  }
+  pipeline::Target Target(std::move(Path), *Kind);
+  pipeline::TargetsList Targets({Target});
+  auto Produced = Manager.produceTargets(StepName, *Container, Targets);
+  if (not Produced) {
+    llvmErrorToRpError(Produced.takeError(), Error);
+    return nullptr;
+  }
+  auto Result = std::make_unique<rp_buffer>();
+  llvm::raw_svector_ostream Stream(*Result);
+  if (llvm::Error ExtractError = (*Produced)->extractOne(Stream, Target)) {
+    llvmErrorToRpError(std::move(ExtractError), Error);
+    return nullptr;
+  }
+  return Result;
+}
+
+static rp_buffer *
+_rp_manager_produce_artifact(rp_manager *manager, const char *step_name,
+                             const char *container_name, const char *kind_name,
+                             uint64_t path_components_count,
+                             const char *path_components[], rp_error *error) {
+  revng_check(manager != nullptr);
+  revng_check(step_name != nullptr);
+  revng_check(container_name != nullptr);
+  revng_check(kind_name != nullptr);
+  if (path_components_count != 0 and path_components == nullptr) {
+    llvmErrorToRpError(revng::createError("null artifact target path"), error);
+    return nullptr;
+  }
+  return produceArtifact(*manager, step_name, container_name, kind_name,
+                         {path_components, size_t(path_components_count)},
+                         error)
+      .release();
+}
+
+static llvm::Error invalidateDownstream(rp_manager &Manager,
+                                        pipeline::Step &Step,
+                                        const rp_container &Container,
+                                        const pipeline::TargetsList &Targets) {
+  pipeline::ContainerToTargetsMap Seed;
+  Seed.add(Container.first(), Targets);
+
+  // A module can be an intermediate container within a step (functions.mlir
+  // in emit-c is the important case), so first propagate invalidations through
+  // the remaining pipes in the current step. Runner::getInvalidations then
+  // carries those results to successor steps.
+  pipeline::ContainerToTargetsMap SameStep = Step.deduceResults(Seed, true);
+  Step.containers().intersect(SameStep);
+  pipeline::TargetInStepSet Invalidations;
+  Invalidations[Step.getName()].merge(SameStep);
+  Manager.getRunner().getInvalidations(Invalidations);
+
+  // Keep the just-committed module while dropping all artifacts derived from
+  // its previous contents, including outputs produced later in this step.
+  Invalidations[Step.getName()].erase(Container.first());
+  return Manager.getRunner().invalidate(Invalidations);
+}
+
+template <typename ContainerT, typename CallbackT>
+static bool transformModule(rp_manager &Manager, llvm::StringRef StepName,
+                            llvm::StringRef ContainerName,
+                            const CallbackT &Callback, rp_error *Error) {
+  pipeline::Step *Step = findStep(Manager, StepName);
+  if (Step == nullptr) {
+    llvmErrorToRpError(revng::createError("unknown pipeline step: " + StepName),
+                       Error);
+    return false;
+  }
+  rp_container *Container = findContainer(*Step, ContainerName);
+  if (Container == nullptr or Container->second == nullptr or
+      not llvm::isa<ContainerT>(Container->second.get())) {
+    llvmErrorToRpError(revng::createError("pipeline container has the wrong "
+                                          "module type"),
+                       Error);
+    return false;
+  }
+  pipeline::TargetsList Targets = Container->second->enumerate();
+  if (Targets.empty()) {
+    llvmErrorToRpError(revng::createError("module container has no produced "
+                                          "targets"),
+                       Error);
+    return false;
+  }
+  std::unique_ptr<pipeline::ContainerBase> Clone =
+      Container->second->cloneFiltered(Targets);
+  auto &TypedClone = llvm::cast<ContainerT>(*Clone);
+  const char *CallbackError = nullptr;
+  if (not Callback(TypedClone, &CallbackError)) {
+    llvmErrorToRpError(
+        revng::createError(CallbackError == nullptr
+                               ? "module transform callback failed"
+                               : CallbackError),
+        Error);
+    return false;
+  }
+
+  llvm::SmallVector<char, 0> Serialized;
+  llvm::raw_svector_ostream Stream(Serialized);
+  if (llvm::Error SerializeError = Clone->serialize(Stream)) {
+    llvmErrorToRpError(std::move(SerializeError), Error);
+    return false;
+  }
+  llvm::MemoryBufferRef Ref({Serialized.data(), Serialized.size()},
+                            "transformed-module");
+  if (llvm::Error DeserializeError = Container->second->deserialize(
+          *llvm::MemoryBuffer::getMemBuffer(Ref, false))) {
+    llvmErrorToRpError(std::move(DeserializeError), Error);
+    return false;
+  }
+  if (llvm::Error InvalidationError =
+          invalidateDownstream(Manager, *Step, *Container, Targets)) {
+    llvmErrorToRpError(std::move(InvalidationError), Error);
+    return false;
+  }
+  Manager.recalculateAllPossibleTargets();
+  return true;
+}
+
+static bool _rp_manager_transform_llvm_module(
+    rp_manager *manager, const char *step_name, const char *container_name,
+    const rp_llvm_module_callbacks *callbacks, rp_error *error) {
+  revng_check(manager != nullptr);
+  revng_check(step_name != nullptr);
+  revng_check(container_name != nullptr);
+  if (callbacks == nullptr or callbacks->transform == nullptr) {
+    llvmErrorToRpError(revng::createError("incomplete LLVM transform callback"),
+                       error);
+    return false;
+  }
+  return transformModule<pipeline::LLVMContainer>(
+      *manager, step_name, container_name,
+      [&](pipeline::LLVMContainer &Container, const char **CallbackError) {
+        bool Success = callbacks->transform(callbacks->opaque,
+                                            llvm::wrap(&Container.getModule()),
+                                            CallbackError);
+        if (Success) {
+          std::string VerificationError;
+          llvm::raw_string_ostream VerificationStream(VerificationError);
+          if (llvm::verifyModule(Container.getModule(), &VerificationStream)) {
+            VerificationStream.flush();
+            if (*CallbackError == nullptr) {
+              static thread_local std::string ErrorStorage;
+              ErrorStorage = std::move(VerificationError);
+              *CallbackError = ErrorStorage.c_str();
+            }
+            return false;
+          }
+        }
+        return Success;
+      },
+      error);
+}
+
+static bool transformMLIRContainer(const rp_mlir_module_callbacks &Callbacks,
+                                   pipeline::ContainerBase &Container,
+                                   const char **CallbackError) {
+  const void *Handle = Container.getMLIRModuleHandle();
+  if (Handle == nullptr) {
+    *CallbackError = "pipeline container is not an MLIR module container";
+    return false;
+  }
+  mlir::ModuleOp Module =
+      mlir::ModuleOp::getFromOpaquePointer(const_cast<void *>(Handle));
+  bool Success = Callbacks.transform(Callbacks.opaque, {Handle}, CallbackError);
+  if (Success and failed(mlir::verify(Module))) {
+    if (*CallbackError == nullptr)
+      *CallbackError = "MLIR module verification failed";
+    return false;
+  }
+  return Success;
+}
+
+static bool _rp_manager_transform_mlir_module(
+    rp_manager *manager, const char *step_name, const char *container_name,
+    const rp_mlir_module_callbacks *callbacks, rp_error *error) {
+  revng_check(manager != nullptr);
+  revng_check(step_name != nullptr);
+  revng_check(container_name != nullptr);
+  if (callbacks == nullptr or callbacks->transform == nullptr) {
+    llvmErrorToRpError(revng::createError("incomplete MLIR transform callback"),
+                       error);
+    return false;
+  }
+  return transformModule<pipeline::ContainerBase>(
+      *manager, step_name, container_name,
+      [&](pipeline::ContainerBase &Value, const char **CallbackError) {
+        return transformMLIRContainer(*callbacks, Value, CallbackError);
+      },
+      error);
+}
+
 static rp_buffer *decompilePTML(rp_manager *Manager, const char *Address,
                                 rp_error *Error) {
   const bool SingleFunction = Address != nullptr;
@@ -2261,6 +2511,63 @@ static rp_buffer *_rp_manager_decompile_to_c(rp_manager *manager,
   revng_check(manager != nullptr);
   std::unique_ptr<rp_buffer> PTML(decompilePTML(manager, nullptr, error));
   return PTML ? stripPTML(*PTML).release() : nullptr;
+}
+
+static rp_buffer *_rp_manager_decompile_to_c_bundle(rp_manager *manager,
+                                                    rp_error *error) {
+  revng_check(manager != nullptr);
+  std::unique_ptr<rp_buffer> Functions(
+      _rp_manager_decompile_to_c(manager, error));
+  if (not Functions)
+    return nullptr;
+  std::unique_ptr<rp_buffer> TypesPTML = produceArtifact(
+      *manager, "emit-type-and-global-header", "types-and-globals.h",
+      "type-and-global-header", {}, error);
+  if (not TypesPTML)
+    return nullptr;
+  std::unique_ptr<rp_buffer> HelpersPTML = produceArtifact(
+      *manager, "emit-helper-header", "helpers.h", "helper-header", {}, error);
+  if (not HelpersPTML)
+    return nullptr;
+  std::unique_ptr<rp_buffer> Types = stripPTML(*TypesPTML);
+  std::unique_ptr<rp_buffer> Helpers = stripPTML(*HelpersPTML);
+
+  auto ReadResource = [&](llvm::StringRef Name)
+      -> llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> {
+    std::string ResourceName = ("share/revng/include/" + Name).str();
+    auto Path = revng::ResourceFinder.findFile(ResourceName);
+    if (not Path or Path->empty())
+      return revng::createError("cannot find C support header: " + Name);
+    return errorOrToExpected(llvm::MemoryBuffer::getFile(*Path));
+  };
+  auto Attributes = ReadResource("attributes.h");
+  if (not Attributes) {
+    llvmErrorToRpError(Attributes.takeError(), error);
+    return nullptr;
+  }
+  auto PrimitiveTypes = ReadResource("primitive-types.h");
+  if (not PrimitiveTypes) {
+    llvmErrorToRpError(PrimitiveTypes.takeError(), error);
+    return nullptr;
+  }
+
+  auto Result = std::make_unique<rp_buffer>();
+  llvm::raw_svector_ostream Stream(*Result);
+  revng::GzipTarWriter Writer(Stream);
+  auto AppendBuffer = [&](llvm::StringRef Path, llvm::ArrayRef<char> Data) {
+    Writer.append(Path, Data);
+  };
+  AppendBuffer("decompiled/functions.c", *Functions);
+  AppendBuffer("decompiled/types-and-globals.h", *Types);
+  AppendBuffer("decompiled/helpers.h", *Helpers);
+  llvm::StringRef AttributesData = (*Attributes)->getBuffer();
+  AppendBuffer("decompiled/attributes.h",
+               {AttributesData.data(), AttributesData.size()});
+  llvm::StringRef PrimitiveTypesData = (*PrimitiveTypes)->getBuffer();
+  AppendBuffer("decompiled/primitive-types.h",
+               {PrimitiveTypesData.data(), PrimitiveTypesData.size()});
+  Writer.close();
+  return Result.release();
 }
 
 static rp_buffer *_rp_manager_decompile_function_to_ptml(rp_manager *manager,

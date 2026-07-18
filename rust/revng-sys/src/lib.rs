@@ -4,6 +4,12 @@ use std::ffi::{c_char, c_int, c_void};
 
 pub type LLVMModuleRef = *mut c_void;
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct rp_mlir_module {
+    pub ptr: *const c_void,
+}
+
 macro_rules !opaque {
     ($($name:ident),+ $(,)?) => {$(
 #[repr(C)]
@@ -80,6 +86,30 @@ pub type rp_lift_callback = unsafe extern "C" fn(
 pub struct rp_lifter_callbacks {
     pub opaque: *mut c_void,
     pub lift: Option<rp_lift_callback>,
+}
+
+pub type rp_llvm_module_transform_callback = unsafe extern "C" fn(
+    opaque: *mut c_void,
+    module: LLVMModuleRef,
+    error_message: *mut *const c_char,
+) -> bool;
+
+#[repr(C)]
+pub struct rp_llvm_module_callbacks {
+    pub opaque: *mut c_void,
+    pub transform: Option<rp_llvm_module_transform_callback>,
+}
+
+pub type rp_mlir_module_transform_callback = unsafe extern "C" fn(
+    opaque: *mut c_void,
+    module: rp_mlir_module,
+    error_message: *mut *const c_char,
+) -> bool;
+
+#[repr(C)]
+pub struct rp_mlir_module_callbacks {
+    pub opaque: *mut c_void,
+    pub transform: Option<rp_mlir_module_transform_callback>,
 }
 
 #[repr(C)]
@@ -373,6 +403,10 @@ extern "C" {
         manager: *mut rp_manager,
         error: *mut rp_error,
     ) -> *mut rp_buffer;
+    pub fn rp_manager_decompile_to_c_bundle(
+        manager: *mut rp_manager,
+        error: *mut rp_error,
+    ) -> *mut rp_buffer;
     pub fn rp_manager_decompile_function_to_ptml(
         manager: *mut rp_manager,
         address: *const c_char,
@@ -383,6 +417,29 @@ extern "C" {
         address: *const c_char,
         error: *mut rp_error,
     ) -> *mut rp_buffer;
+    pub fn rp_manager_produce_artifact(
+        manager: *mut rp_manager,
+        step_name: *const c_char,
+        container_name: *const c_char,
+        kind_name: *const c_char,
+        path_components_count: u64,
+        path_components: *const *const c_char,
+        error: *mut rp_error,
+    ) -> *mut rp_buffer;
+    pub fn rp_manager_transform_llvm_module(
+        manager: *mut rp_manager,
+        step_name: *const c_char,
+        container_name: *const c_char,
+        callbacks: *const rp_llvm_module_callbacks,
+        error: *mut rp_error,
+    ) -> bool;
+    pub fn rp_manager_transform_mlir_module(
+        manager: *mut rp_manager,
+        step_name: *const c_char,
+        container_name: *const c_char,
+        callbacks: *const rp_mlir_module_callbacks,
+        error: *mut rp_error,
+    ) -> bool;
     pub fn rp_manager_save(manager: *mut rp_manager) -> bool;
     pub fn rp_manager_destroy(manager: *mut rp_manager);
     pub fn rp_manager_get_container_identifier_from_name(

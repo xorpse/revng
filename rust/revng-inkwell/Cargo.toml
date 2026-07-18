@@ -1,0 +1,11 @@
+[package]
+name = "revng-inkwell"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+inkwell = { version = "0.9", default-features = false, features = ["llvm16-0-no-llvm-linking"] }
+revng-sys = { path = "../revng-sys" }
+

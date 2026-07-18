@@ -2,7 +2,9 @@
 
 `revng-sdk` discovers and validates a relocatable `revng-sdk.json` descriptor.
 `revng-sys` provides the raw PipelineC callback ABI and emits the link settings
-described by that manifest.
+described by that manifest. `revng-inkwell` adapts PipelineC's borrowed LLVM
+handles to scoped Inkwell `BorrowedModule` views and provides a transactional
+transform callback without exposing raw ownership handling to consumers.
 
 Generate a descriptor after building revng:
 

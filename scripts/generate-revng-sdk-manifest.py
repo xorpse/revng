@@ -124,12 +124,31 @@ def main() -> None:
 
     component_llvm = (llvm_lib / f"libLLVMCore{extension}").exists()
     llvm_libraries = (
-        ["LLVMCore", "LLVMSupport", "LLVMTarget", "LLVMExecutionEngine", "LLVMAnalysis"]
+        [
+            "LLVMCore",
+            "LLVMSupport",
+            "LLVMTarget",
+            "LLVMExecutionEngine",
+            "LLVMAnalysis",
+            "LLVMTransformUtils",
+            "LLVMScalarOpts",
+            "LLVMInstCombine",
+            "LLVMPasses",
+        ]
         if component_llvm
         else ["LLVM"]
     )
     if not component_llvm and not (llvm_lib / f"libLLVM{extension}").exists():
         raise SystemExit(f"LLVM directory has neither component nor monolithic {extension} libraries")
+
+    # Expose the standard MLIR C API to Rust/C SDK consumers that borrow an
+    # rp_mlir_module in a transform callback. RegisterEverything is useful to
+    # high-level Rust wrappers, while IR and Transforms cover direct C API use.
+    mlir_libraries = [
+        name
+        for name in ("MLIRCAPIIR", "MLIRCAPITransforms", "MLIRCAPIRegisterEverything")
+        if (llvm_lib / f"lib{name}{extension}").exists()
+    ]
 
     # Full decompiler pipelines are assembled through constructor-registered
     # pipes and LLVM passes. Retain their DSOs in consumers even though no
@@ -171,6 +190,7 @@ def main() -> None:
             "revngSupport",
             "revngModel",
             *llvm_libraries,
+            *mlir_libraries,
             "c++",
         ],
         "link_files": link_files,

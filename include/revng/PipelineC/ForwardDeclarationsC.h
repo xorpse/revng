@@ -10,6 +10,8 @@ typedef struct rp_manager rp_manager;
 typedef struct rp_binary_view rp_binary_view;
 typedef struct rp_address_space_callbacks rp_address_space_callbacks;
 typedef struct rp_lifter_callbacks rp_lifter_callbacks;
+typedef struct rp_llvm_module_callbacks rp_llvm_module_callbacks;
+typedef struct rp_mlir_module_callbacks rp_mlir_module_callbacks;
 typedef struct rp_type rp_type;
 typedef struct rp_typed_argument rp_typed_argument;
 typedef struct rp_named_typed_register rp_named_typed_register;

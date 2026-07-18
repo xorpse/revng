@@ -11,6 +11,12 @@
 // used by llvm-c/Types.h, without requiring consumers to install LLVM headers.
 typedef struct LLVMOpaqueModule *LLVMModuleRef;
 
+// Layout-compatible with MLIR's C API MlirModule without requiring MLIR
+// headers in ordinary PipelineC consumers.
+typedef struct rp_mlir_module {
+  const void *ptr;
+} rp_mlir_module;
+
 #if defined(__cplusplus) && !defined(REVNG_PIPELINEC_C_ONLY)
 class RawBinaryView;
 typedef RawBinaryView rp_binary_view;
@@ -65,6 +71,18 @@ typedef struct rp_lifter_callbacks {
                uint64_t entry_count, LLVMModuleRef output,
                const char **error_message);
 } rp_lifter_callbacks;
+
+typedef struct rp_llvm_module_callbacks {
+  void *opaque;
+  bool (*transform)(void *opaque, LLVMModuleRef module,
+                    const char **error_message);
+} rp_llvm_module_callbacks;
+
+typedef struct rp_mlir_module_callbacks {
+  void *opaque;
+  bool (*transform)(void *opaque, rp_mlir_module module,
+                    const char **error_message);
+} rp_mlir_module_callbacks;
 
 typedef enum rp_primitive_kind {
   RP_PRIMITIVE_KIND_VOID = 0,
