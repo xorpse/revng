@@ -81,6 +81,15 @@ bool lift(void *Opaque, const char *Model, const rp_binary_view *Binary,
   return State.LifterCalled;
 }
 
+bool transformLLVM(void *Opaque, LLVMModuleRef Module, const char **) {
+  *static_cast<bool *>(Opaque) = true;
+  LLVMSetModuleIdentifier(Module, "pipeline-c-transformed", 22);
+  LLVMTypeRef I8 = LLVMInt8TypeInContext(LLVMGetModuleContext(Module));
+  LLVMValueRef Marker = LLVMAddGlobal(Module, I8, "pipeline_c_marker");
+  LLVMSetInitializer(Marker, LLVMConstInt(I8, 1, false));
+  return true;
+}
+
 } // namespace
 
 BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
@@ -166,6 +175,19 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
   BOOST_CHECK(rp_buffer_size(LiftedModule) != 0U);
   rp_buffer_destroy(LiftedModule);
   rp_target_destroy(RootTarget);
+
+  bool TransformCalled = false;
+  const rp_llvm_module_callbacks TransformCallbacks{&TransformCalled,
+                                                    transformLLVM};
+  BOOST_REQUIRE(rp_manager_transform_llvm_module(
+      Manager, "lift", "root.bc.zstd", &TransformCallbacks, &Error));
+  BOOST_CHECK(TransformCalled);
+  std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)> TransformedModule(
+      rp_manager_produce_artifact(Manager, "lift", "root.bc.zstd", "root", 0,
+                                  nullptr, &Error),
+      rp_buffer_destroy);
+  BOOST_REQUIRE(TransformedModule != nullptr);
+  BOOST_CHECK(rp_buffer_size(TransformedModule.get()) != 0U);
 
   rp_lifter_callbacks LifterCallbacks{&State, lift};
   BOOST_REQUIRE(rp_set_lifter(Manager, &LifterCallbacks, &Error));

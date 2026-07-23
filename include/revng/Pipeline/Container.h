@@ -23,7 +23,7 @@
 
 namespace pipeline {
 
-template<typename T>
+template <typename T>
 concept HasID = requires {
   { T::ID } -> std::convertible_to<const char &>;
 };
@@ -36,8 +36,7 @@ public:
   virtual std::vector<Kind *> getPossibleKinds() const = 0;
 };
 
-template<typename T>
-class ContainerTypeInfo : public ContainerTypeInfoBase {
+template <typename T> class ContainerTypeInfo : public ContainerTypeInfoBase {
 public:
   llvm::StringRef getMIMEType() const override { return T::MIMEType; }
   const char *getID() const override { return &T::ID; }
@@ -49,8 +48,7 @@ public:
 
 class ContainerBase {
 private:
-  template<typename Derived>
-  friend class Container;
+  template <typename Derived> friend class Container;
 
   const char *ID;
   std::string Name;
@@ -74,8 +72,8 @@ public:
   virtual std::vector<Kind *> getPossibleKinds() const = 0;
 
 public:
-  ContainerBase(llvm::StringRef Name, char const *ID) :
-    ID(ID), Name(Name.str()) {}
+  ContainerBase(llvm::StringRef Name, char const *ID)
+      : ID(ID), Name(Name.str()) {}
 
 public:
   static bool classof(const ContainerBase *) { return true; }
@@ -158,6 +156,10 @@ public:
   /// Checks that the content of the this container is valid.
   virtual llvm::Error verify() const { return enumerate().verify(*this); }
 
+  /// Return an MLIR ModuleOp opaque pointer for containers backed by one.
+  /// The pointer is borrowed and remains owned by the container.
+  virtual const void *getMLIRModuleHandle() const { return nullptr; }
+
   /// Return the serialized content of the specified non * target
   virtual llvm::Error extractOne(llvm::raw_ostream &OS,
                                  const Target &Target) const = 0;
@@ -179,8 +181,7 @@ public:
 /// CRTP class to be extended to implement a pipeline container.
 ///
 /// The methods that must be implemented are those shown in ContainerBase.
-template<typename Derived>
-class Container : public ContainerBase {
+template <typename Derived> class Container : public ContainerBase {
 private:
   static int registerType() {
     auto &Registry = ContainerBase::getTypeRegistryImpl();
@@ -195,9 +196,9 @@ public:
   /// This is a template to force the evaluation of the concept from the class
   /// definition to this class objects instantiation, otherwise the derived
   /// type would not be fully defined yet and the constraints would fail.
-  template<HasID T = Derived>
-  Container(llvm::StringRef Name, const char *ID = &Derived::ID) :
-    ContainerBase(Name, ID) {}
+  template <HasID T = Derived>
+  Container(llvm::StringRef Name, const char *ID = &Derived::ID)
+      : ContainerBase(Name, ID) {}
 
   ~Container() override = default;
 
@@ -210,7 +211,7 @@ public:
 
   static std::vector<revng::FilePath>
   getWrittenFiles(const revng::FilePath &Path) {
-    return { Path };
+    return {Path};
   }
 
 public:

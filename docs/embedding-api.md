@@ -100,6 +100,43 @@ known function. Matching `_to_ptml` variants retain revng's token markup for
 clients that use semantic presentation data. Returned buffers are owned by the
 caller and must be released with `rp_buffer_destroy`.
 
+`rp_manager_decompile_to_c_bundle` returns a gzip-compressed tar archive in
+memory. It contains `functions.c`, `types-and-globals.h`, `helpers.h`,
+`attributes.h`, and `primitive-types.h` under a `decompiled/` directory, so an
+embedding can persist or unpack a complete compilable result without asking
+the pipeline to write files.
+
+`rp_manager_produce_artifact` is the lower-level in-memory path. It takes a
+step, container, kind, and target path and returns the artifact's extracted
+payload directly. A rank-zero artifact uses a component count of zero and a
+null component array. This differs from `rp_manager_produce_targets`, whose
+buffer is the container's serialization format.
+
+## Transforming LLVM and MLIR in place
+
+`rp_manager_transform_llvm_module` and `rp_manager_transform_mlir_module`
+provide a transactional callback over a produced module container. revng
+clones the selected container, lends the clone to the callback, verifies it,
+commits it only when the callback returns true, and invalidates artifacts
+derived from the old module. This includes artifacts produced later in the
+same pipeline step. A callback failure or verification error leaves the
+original module and its downstream artifacts untouched.
+
+The handle is borrowed and is valid only until the callback returns. It must
+not be retained or disposed. The reusable `revng-inkwell` crate hides the raw
+handle and ownership conversion behind `BorrowedModule` and
+`transform_llvm_module`; callers receive a scoped module view and return a
+`Result`. The Rust example performs instruction-combining and reassociation on
+the lifted `root.bc.zstd` container, commits it, and then requests C from
+revng, so the remaining pipeline consumes the transformed IR.
+
+`rp_mlir_module` has the same one-pointer representation as MLIR's
+`MlirModule`. A Rust MLIR wrapper can reinterpret it during the callback and
+use the standard MLIR C API. Generated SDK manifests link `MLIRCAPIIR`,
+`MLIRCAPITransforms`, and `MLIRCAPIRegisterEverything` when those libraries are
+available. As with LLVM, the wrapper must not destroy or outlive the borrowed
+module.
+
 The full APIs require a full decompiler build and the `revng-pipelines.yml`
 pipeline. A minimal SDK-only build contains the embedding and lifting boundary
 but not all C-emission analyses. A distributable SDK should ship the PipelineC
