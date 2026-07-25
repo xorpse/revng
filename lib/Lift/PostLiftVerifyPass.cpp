@@ -88,6 +88,7 @@ bool PostLiftVerifyPass::runOnModule(Module &M) {
                 or CalleeName == "revng_abort");
 
         Good = Good or FunctionTags::SegmentGlobalGetter.isTagOf(Callee);
+        Good = Good or FunctionTags::Helper.isTagOf(Callee);
 
         switch (Callee->getIntrinsicID()) {
         case Intrinsic::fshl:

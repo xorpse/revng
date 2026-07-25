@@ -7,22 +7,31 @@ revng_add_library_internal(
   SHARED
   AbstractLifter.cpp
   CSVOffsets.cpp
+  ExternalJumpsHandler.cpp
   IRAnnotators.cpp
+  JumpTargetManager.cpp
   Lift.cpp
   LiftPipe.cpp
   LinkSupportPipe.cpp
   LoadBinaryPass.cpp
   PostLiftVerifyPass.cpp
-  SelfReferencingDbgAnnotationWriter.cpp)
+  RootAnalyzer.cpp
+  SelfReferencingDbgAnnotationWriter.cpp
+  ValueMaterializerPass.cpp)
 
 target_link_libraries(
   revngLift
   PUBLIC m
          revngABI
          revngBasicAnalyses
+         revngEarlyFunctionAnalysis
+         revngFunctionCallIdentification
          revngModel
+         revngModelImporterDebugInfo
          revngPipes
          revngSupport
+         revngTypeShrinking
+         revngValueMaterializer
          ${LLVM_LIBRARIES})
 
 if(REVNG_BACKEND_LIBTCG)

@@ -66,7 +66,7 @@ typedef struct rp_file_address_space_mapping {
 
 typedef struct rp_lifter_callbacks {
   void *opaque;
-  bool (*lift)(void *opaque, const char *model_yaml,
+  bool (*lift)(void *opaque, const void *model,
                const rp_binary_view *binary, const char *const entries[],
                uint64_t entry_count, LLVMModuleRef output,
                const char **error_message);

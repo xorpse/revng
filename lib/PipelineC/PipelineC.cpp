@@ -282,8 +282,6 @@ public:
   llvm::Error lift(const model::Binary &, const RawBinaryView &View,
                    llvm::ArrayRef<MetaAddress> Entries,
                    llvm::Module &Output) override {
-    std::string SerializedModel;
-    Model.serialize(SerializedModel);
     std::vector<std::string> EntryStrings;
     std::vector<const char *> EntryPointers;
     EntryStrings.reserve(Entries.size());
@@ -295,7 +293,7 @@ public:
 
     const char *ErrorMessage = nullptr;
     bool Success = Callbacks.lift(
-        Callbacks.opaque, SerializedModel.c_str(), &View, EntryPointers.data(),
+        Callbacks.opaque, &Model, &View, EntryPointers.data(),
         EntryPointers.size(), llvm::wrap(&Output), &ErrorMessage);
     if (Success)
       return llvm::Error::success();
@@ -462,7 +460,6 @@ static rp_manager *createManagerFromLoadedAddressSpace(
         abi::registerDefaultFunctionPrototype(*LoadedModel);
     model::Function Function;
     Function.Entry() = LoadedModel->EntryPoint();
-    Function.Prototype() = LoadedModel->DefaultPrototype();
     LoadedModel->Functions().insert(std::move(Function));
   }
   auto &WritableModel = revng::getWritableModelFromContext(Manager->context());

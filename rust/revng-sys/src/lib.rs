@@ -32,6 +32,10 @@ opaque!(
     rp_document_error,
     rp_simple_error,
     rp_buffer,
+    rp_diff_map,
+    rp_string_map,
+    rp_invalidations,
+    rp_container_targets_map,
 );
 
 #[repr(C)]
@@ -74,7 +78,7 @@ pub struct rp_file_address_space_mapping {
 
 pub type rp_lift_callback = unsafe extern "C" fn(
     opaque: *mut c_void,
-    model_yaml: *const c_char,
+    model: *const c_void,
     binary: *const rp_binary_view,
     entries: *const *const c_char,
     entry_count: u64,
@@ -485,6 +489,34 @@ extern "C" {
     pub fn rp_buffer_size(buffer: *const rp_buffer) -> u64;
     pub fn rp_buffer_data(buffer: *const rp_buffer) -> *const c_char;
     pub fn rp_buffer_destroy(buffer: *mut rp_buffer);
+    pub fn rp_manager_run_analyses_list(
+        manager: *mut rp_manager,
+        list_name: *const c_char,
+        options: *const rp_string_map,
+        invalidations: *mut rp_invalidations,
+        error: *mut rp_error,
+    ) -> *mut rp_diff_map;
+    pub fn rp_manager_run_analysis(
+        manager: *mut rp_manager,
+        step_name: *const c_char,
+        analysis_name: *const c_char,
+        target_map: *const rp_container_targets_map,
+        options: *const rp_string_map,
+        invalidations: *mut rp_invalidations,
+        error: *mut rp_error,
+    ) -> *mut rp_diff_map;
+    pub fn rp_container_targets_map_create() -> *mut rp_container_targets_map;
+    pub fn rp_container_targets_map_add(
+        map: *mut rp_container_targets_map,
+        container: *const rp_container,
+        target: *const rp_target,
+    );
+    pub fn rp_container_targets_map_destroy(map: *mut rp_container_targets_map);
+    pub fn rp_string_map_create() -> *mut rp_string_map;
+    pub fn rp_string_map_destroy(map: *mut rp_string_map);
+    pub fn rp_invalidations_create() -> *mut rp_invalidations;
+    pub fn rp_invalidations_destroy(invalidations: *mut rp_invalidations);
+    pub fn rp_diff_map_destroy(diff_map: *mut rp_diff_map);
 }
 
 #[cfg(test)]
