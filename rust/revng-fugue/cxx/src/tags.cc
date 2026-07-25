@@ -27,6 +27,7 @@
 #include "revng/Support/BasicBlockID.h"
 #include "revng/Support/BlockType.h"
 #include "revng/Support/MetaAddress.h"
+#include "revng/Support/ResourceFinder.h"
 
 namespace revng_fugue {
 
@@ -98,6 +99,14 @@ void emit_unsupported(std::uintptr_t BlockValue, rust::Str Name,
     set_csv_metadata(Function, "revng.csvaccess.offsets.store", Writes);
   }
   llvm::CallInst::Create(Function->getFunctionType(), Function, {}, "", Block);
+}
+
+rust::String default_pipeline() {
+  auto Path = revng::ResourceFinder.findFile("share/revng/pipelines/"
+                                             "revng-pipelines.yml");
+  if (not Path or Path->empty())
+    return rust::String();
+  return rust::String(*Path);
 }
 
 }

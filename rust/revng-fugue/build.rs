@@ -12,9 +12,6 @@ fn main() {
     sdk.configure_cxx(&mut bridge);
     bridge.compile("revng-fugue-cxx");
 
-    sdk.emit_pipeline_env("full", "REVNG_FULL_PIPELINE")
-        .unwrap_or_else(|error| panic!("{error}"));
-
     println!("cargo::rerun-if-changed=src/bridge.rs");
     println!("cargo::rerun-if-changed=cxx");
 }

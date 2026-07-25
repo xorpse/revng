@@ -266,15 +266,11 @@ cmake --build build-linux-c-consumer
 ./build-linux-c-consumer/revng_c_consumer libtcg
 ```
 
-Run the Rust/cxx and Rust/Inkwell callback backends:
+Run the Rust consumer:
 
 ```sh
-cargo run --manifest-path examples/rust-lifter/Cargo.toml -- rust
-cargo run --manifest-path examples/rust-inkwell-lifter/Cargo.toml -- inkwell
+cargo test --manifest-path rust/revng-fugue/Cargo.toml -- --test-threads=1
 ```
-
-The same examples can select `reference-x86_64` or `libtcg` to exercise the
-registered native backends from Rust.
 
 [`embedding-api.md`](embedding-api.md) documents the lazy-byte and optional
 serialization lifecycle, model construction, backend discovery, and direct

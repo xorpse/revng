@@ -8,6 +8,7 @@ mod ffi {
         unsafe fn tag_csv(global: usize);
         unsafe fn emit_unsupported(block: usize, name: &str, reads: &[usize], writes: &[usize]);
         unsafe fn emit_jump_to_symbol(terminator: usize, symbol: &str);
+        fn default_pipeline() -> String;
 
         unsafe fn fugue_lifter_new(
             model: usize,
@@ -44,8 +45,8 @@ mod ffi {
 }
 
 pub(crate) use ffi::{
-    emit_jump_to_symbol, emit_unsupported, fugue_lifter_diverge, fugue_lifter_exit_call,
-    fugue_lifter_exit_constant, fugue_lifter_exit_dynamic, fugue_lifter_finalize,
-    fugue_lifter_free, fugue_lifter_new, fugue_lifter_new_pc, fugue_lifter_peek,
-    fugue_lifter_register_direct_jumps, tag_csv, tag_helper,
+    default_pipeline, emit_jump_to_symbol, emit_unsupported, fugue_lifter_diverge,
+    fugue_lifter_exit_call, fugue_lifter_exit_constant, fugue_lifter_exit_dynamic,
+    fugue_lifter_finalize, fugue_lifter_free, fugue_lifter_new, fugue_lifter_new_pc,
+    fugue_lifter_peek, fugue_lifter_register_direct_jumps, tag_csv, tag_helper,
 };

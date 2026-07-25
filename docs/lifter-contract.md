@@ -92,15 +92,11 @@ the full decompiler pipeline. It supplies a lazy five-byte implementation of
 either `reference-x86_64` or `libtcg`, and receives plain C from
 `rp_manager_decompile_to_c`.
 
-[`examples/rust-lifter`](../examples/rust-lifter) shows the same embedding
-boundary from Rust using `cxx`. Rust owns instruction decoding and the backend
-callback; a small C++ adapter emits the LLVM module and its revng metadata.
-
-[`examples/rust-inkwell-lifter`](../examples/rust-inkwell-lifter) is the
-corresponding Inkwell variant. Rust creates the LLVM IR directly; its narrow
-C++ shim only applies revng-specific tags, block metadata, and `BasicBlockID`
-constants. Both Rust examples can select their custom callback, the reference
-backend, or libtcg from the same executable.
+[`rust/revng-fugue`](../rust/revng-fugue) shows the same embedding boundary
+from Rust using `cxx`. Rust owns instruction lifting and the backend callback;
+a narrow C++ shim wraps revng's `JumpTargetManager` and applies the
+revng-specific tags, block metadata, and `BasicBlockID` constants that are not
+part of the C API.
 
 Reusable Rust bindings and SDK discovery live under
 [`rust/revng-sys`](../rust/revng-sys) and

@@ -375,9 +375,13 @@ unsafe fn first_entry(entries: *const *const c_char, count: u64) -> Option<u64> 
 fn initialise() -> Result<(), Error> {
     static INITIALISED: OnceLock<bool> = OnceLock::new();
     let initialised = *INITIALISED.get_or_init(|| {
+        let pipeline = bridge::default_pipeline();
+        if pipeline.is_empty() {
+            return false;
+        }
         let program = CString::new("revng-fugue").expect("program name has no NUL");
-        let pipeline = CString::new(format!("--pipeline-path={}", env!("REVNG_FULL_PIPELINE")))
-            .expect("pipeline path has no NUL");
+        let pipeline =
+            CString::new(format!("--pipeline-path={pipeline}")).expect("pipeline path has no NUL");
         let argv = [program.as_ptr(), pipeline.as_ptr()];
         unsafe { rp_initialize(2, argv.as_ptr(), 0, ptr::null_mut()) }
     });

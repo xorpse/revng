@@ -165,9 +165,8 @@ The pure-C example is in [`../examples/lifter-library.c`](../examples/lifter-lib
 the full decompiler example is in
 [`../examples/decompile-library.c`](../examples/decompile-library.c),
 the CMake integration example is in
-[`../examples/cmake-lifter`](../examples/cmake-lifter), and the Rust examples
-are in [`../examples/rust-lifter`](../examples/rust-lifter) and
-[`../examples/rust-inkwell-lifter`](../examples/rust-inkwell-lifter).
+[`../examples/cmake-lifter`](../examples/cmake-lifter), and the Rust consumer
+is [`../rust/revng-fugue`](../rust/revng-fugue).
 See [`embedding-api.md`](embedding-api.md) for the lazy-byte, serialization,
 model, backend-discovery, and direct C-emission APIs.
 

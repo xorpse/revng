@@ -6,8 +6,8 @@ metadata, selects a linked lifter backend or installs a callback backend, then
 requests C directly from the full pipeline.
 
 `examples/decompile-library.c` is the smallest complete C consumer.
-`examples/rust-inkwell-lifter` implements the same path in Rust and includes a
-backend that constructs revng-compatible LLVM IR with Inkwell.
+`rust/revng-fugue` implements the same path in Rust, with a backend that
+constructs revng-compatible LLVM IR through Inkwell.
 
 ## Supplying bytes
 

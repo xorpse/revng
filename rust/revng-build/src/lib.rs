@@ -29,7 +29,6 @@ const MLIR_LIBRARIES: [&str; 3] = [
 const BASE_LIBRARIES: [&str; 3] = ["revngPipelineC", "revngSupport", "revngModel"];
 const REGISTRY_LIBRARIES: [&str; 2] = ["revngFunctionCallIdentification", "revngValueMaterializer"];
 const RUNTIME_LIBRARIES: [&str; 2] = ["libc++.so", "libc++abi.so"];
-const PIPELINES: [(&str, &str); 1] = [("full", "revng-pipelines.yml")];
 const DEPENDENCIES: [Dependency; 2] = [
     Dependency {
         formula: "boost",
@@ -68,8 +67,6 @@ pub enum Error {
     MissingInclude { variable: String, path: PathBuf },
     #[error("revng SDK path does not exist: {}", .0.display())]
     MissingPath(PathBuf),
-    #[error("the SDK has no '{0}' pipeline")]
-    MissingPipeline(String),
     #[error("{} does not provide {name}", compiler.display())]
     MissingRuntime { compiler: PathBuf, name: String },
     #[error("no usable cache directory; set REVNG_BUILD_CACHE or HOME")]
@@ -345,23 +342,6 @@ impl Sdk {
 
     pub fn compiler(&self) -> PathBuf {
         Self::compiler_for(self.os, &self.llvm)
-    }
-
-    pub fn pipeline(&self, name: &str) -> Option<PathBuf> {
-        let file = PIPELINES
-            .iter()
-            .find(|(pipeline, _)| *pipeline == name)
-            .map(|(_, file)| file)?;
-        let path = self.prefix.join("share/revng/pipelines").join(file);
-        path.exists().then_some(path)
-    }
-
-    pub fn emit_pipeline_env(&self, pipeline: &str, variable: &str) -> Result<(), Error> {
-        let path = self
-            .pipeline(pipeline)
-            .ok_or_else(|| Error::MissingPipeline(pipeline.to_owned()))?;
-        println!("cargo::rustc-env={variable}={}", path.display());
-        Ok(())
     }
 
     pub fn configure_linkage(&self) {
@@ -725,22 +705,5 @@ mod test {
             Sdk::runtime_libraries(&compiler),
             Err(Error::MissingRuntime { name, .. }) if name == "libc++abi.so"
         ));
-    }
-
-    #[test]
-    fn pipelines_resolve_by_convention() {
-        let fixture = Fixture::new("pipelines");
-        fixture.file("sdk/share/revng/pipelines/revng-pipelines.yml");
-        let sdk = fixture.sdk(Os::MacOs, true, Vec::new());
-        assert_eq!(
-            sdk.pipeline("full"),
-            Some(
-                fixture
-                    .root
-                    .join("sdk/share/revng/pipelines/revng-pipelines.yml")
-            )
-        );
-        assert_eq!(sdk.pipeline("address-space"), None);
-        assert_eq!(sdk.pipeline("unknown"), None);
     }
 }
