@@ -4,6 +4,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::provision::{Cache, MissingPrerequisites};
+
+mod provision;
+
 const CXX_FLAGS: [&str; 3] = ["-std=c++20", "-stdlib=libc++", "-fno-rtti"];
 const LLVM_MAJOR: u32 = 16;
 const LLVM_COMPONENTS: [&str; 9] = [
@@ -23,11 +27,7 @@ const MLIR_LIBRARIES: [&str; 3] = [
     "MLIRCAPIRegisterEverything",
 ];
 const BASE_LIBRARIES: [&str; 3] = ["revngPipelineC", "revngSupport", "revngModel"];
-const REGISTRY_LIBRARIES: [&str; 3] = [
-    "revngPipebox",
-    "revngFunctionCallIdentification",
-    "revngValueMaterializer",
-];
+const REGISTRY_LIBRARIES: [&str; 2] = ["revngFunctionCallIdentification", "revngValueMaterializer"];
 const RUNTIME_LIBRARIES: [&str; 2] = ["libc++.so", "libc++abi.so"];
 const PIPELINES: [(&str, &str); 2] = [
     ("address-space", "address-space.yml"),
@@ -52,6 +52,15 @@ const DEPENDENCIES: [Dependency; 2] = [
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("provisioning step '{step}' failed; see {}", log.display())]
+    BuildStep { step: &'static str, log: PathBuf },
+    #[error("cached SDK at {} is incomplete; delete the directory to reprovision", .0.display())]
+    CorruptCache(PathBuf),
+    #[error("failed to download {url}: {source}")]
+    Download {
+        url: String,
+        source: Box<ureq::Error>,
+    },
     #[error("failed to access {}: {source}", path.display())]
     Io { path: PathBuf, source: io::Error },
     #[error("revng pins LLVM {LLVM_MAJOR}, but llvm-config reports {found}")]
@@ -66,14 +75,34 @@ pub enum Error {
     MissingPipeline(String),
     #[error("{} does not provide {name}", compiler.display())]
     MissingRuntime { compiler: PathBuf, name: String },
-    #[error("set REVNG_LLVM to the pinned LLVM install prefix")]
+    #[error("no usable cache directory; set REVNG_BUILD_CACHE or HOME")]
+    NoCacheRoot,
+    #[error("REVNG_SDK is set but REVNG_LLVM is not; set both or neither")]
     NoLlvm,
-    #[error("set REVNG_SDK to a staged revng SDK prefix")]
+    #[error("REVNG_LLVM is set but REVNG_SDK is not; set both or neither")]
     NoSdk,
+    #[error("{0}")]
+    Preflight(MissingPrerequisites),
     #[error("failed to run {}: {source}", path.display())]
     Toolchain { path: PathBuf, source: io::Error },
     #[error("revng supports linux-x86_64 and macos-aarch64, not {os}-{arch}")]
     UnsupportedTarget { arch: String, os: String },
+}
+
+impl Error {
+    fn io(path: impl AsRef<Path>, source: io::Error) -> Self {
+        Self::Io {
+            path: path.as_ref().to_owned(),
+            source,
+        }
+    }
+
+    fn toolchain(path: impl AsRef<Path>, source: io::Error) -> Self {
+        Self::Toolchain {
+            path: path.as_ref().to_owned(),
+            source,
+        }
+    }
 }
 
 struct Dependency {
@@ -204,14 +233,19 @@ impl Sdk {
 
         let canonicalise =
             |path: PathBuf| fs::canonicalize(&path).map_err(|source| Error::Io { path, source });
-        let prefix = env::var_os("DEP_REVNG_SDK")
-            .or_else(|| env::var_os("REVNG_SDK"))
-            .ok_or(Error::NoSdk)?;
-        let prefix = canonicalise(PathBuf::from(prefix))?;
-        let llvm = env::var_os("DEP_REVNG_LLVM")
-            .or_else(|| env::var_os("REVNG_LLVM"))
-            .ok_or(Error::NoLlvm)?;
-        let llvm = canonicalise(PathBuf::from(llvm))?;
+        let sdk_variable = env::var_os("DEP_REVNG_SDK").or_else(|| env::var_os("REVNG_SDK"));
+        let llvm_variable = env::var_os("DEP_REVNG_LLVM").or_else(|| env::var_os("REVNG_LLVM"));
+        let (prefix, llvm) = match (sdk_variable, llvm_variable) {
+            (Some(prefix), Some(llvm)) => (PathBuf::from(prefix), PathBuf::from(llvm)),
+            (Some(_), None) => return Err(Error::NoLlvm),
+            (None, Some(_)) => return Err(Error::NoSdk),
+            (None, None) => {
+                let cache = Cache::ensure(os)?;
+                (cache.sdk(), cache.llvm())
+            }
+        };
+        let prefix = canonicalise(prefix)?;
+        let llvm = canonicalise(llvm)?;
 
         let llvm_config = llvm.join("bin/llvm-config");
         let compiler = Self::compiler_for(os, &llvm);
@@ -279,7 +313,7 @@ impl Sdk {
             dependency_includes.extend(dependency.resolve()?);
         }
 
-        for variable in ["REVNG_SDK", "REVNG_LLVM"] {
+        for variable in ["REVNG_SDK", "REVNG_LLVM", "REVNG_BUILD_CACHE"] {
             println!("cargo::rerun-if-env-changed={variable}");
         }
         for dependency in &DEPENDENCIES {
@@ -402,43 +436,30 @@ impl Sdk {
     }
 
     // Constructor-registered pipes and passes must stay loaded even though no
-    // ordinary symbol reference pulls them in; minimal SDK builds omit Pipebox
-    // and therefore the whole registry set.
+    // ordinary symbol reference pulls them in.
     fn retained_libraries(&self) -> Vec<PathBuf> {
         let lib = self.prefix.join("lib");
         let mut retained = Vec::new();
-        let mut backends = vec!["revngLiftReference"];
-        if self.os == Os::Linux {
-            backends.push("revngLiftLibTcg");
-        }
-        for stem in backends {
+        for stem in ["revngLiftReference"].into_iter().chain(REGISTRY_LIBRARIES) {
             let path = lib.join(self.os.library(stem));
             if path.exists() {
                 retained.push(path);
             }
         }
-        if lib.join(self.os.library("revngPipebox")).exists() {
-            for stem in REGISTRY_LIBRARIES {
-                let path = lib.join(self.os.library(stem));
-                if path.exists() {
-                    retained.push(path);
-                }
-            }
-            let analyses = self.prefix.join("lib/revng/analyses");
-            let mut entries = fs::read_dir(&analyses)
-                .expect("analyses directory validated at discovery")
-                .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-                .filter(|path| {
-                    path.file_name()
-                        .and_then(|name| name.to_str())
-                        .is_some_and(|name| {
-                            name.starts_with("librevng") && name.ends_with(self.os.extension())
-                        })
-                })
-                .collect::<Vec<_>>();
-            entries.sort();
-            retained.extend(entries);
-        }
+        let analyses = self.prefix.join("lib/revng/analyses");
+        let mut entries = fs::read_dir(&analyses)
+            .expect("analyses directory validated at discovery")
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| {
+                        name.starts_with("librevng") && name.ends_with(self.os.extension())
+                    })
+            })
+            .collect::<Vec<_>>();
+        entries.sort();
+        retained.extend(entries);
         retained
     }
 
@@ -570,7 +591,6 @@ mod test {
         for path in [
             "sdk/lib/librevngPipelineC.dylib",
             "sdk/lib/librevngLiftReference.dylib",
-            "sdk/lib/librevngPipebox.dylib",
             "sdk/lib/librevngFunctionCallIdentification.dylib",
             "sdk/lib/librevngValueMaterializer.dylib",
             "sdk/lib/revng/analyses/librevngB.dylib",
@@ -612,9 +632,6 @@ mod test {
                     "cargo::rustc-link-arg=-Wl,-needed_library,{root}/sdk/lib/librevngLiftReference.dylib"
                 ),
                 &format!(
-                    "cargo::rustc-link-arg=-Wl,-needed_library,{root}/sdk/lib/librevngPipebox.dylib"
-                ),
-                &format!(
                     "cargo::rustc-link-arg=-Wl,-needed_library,{root}/sdk/lib/librevngFunctionCallIdentification.dylib"
                 ),
                 &format!(
@@ -647,8 +664,6 @@ mod test {
         for path in [
             "sdk/lib/librevngPipelineC.so",
             "sdk/lib/librevngLiftReference.so",
-            "sdk/lib/librevngLiftLibTcg.so",
-            "sdk/lib/librevngPipebox.so",
             "sdk/lib/librevngFunctionCallIdentification.so",
             "sdk/lib/librevngValueMaterializer.so",
             "sdk/lib/revng/analyses/librevngA.so",
@@ -676,8 +691,6 @@ mod test {
             [
                 &"cargo::rustc-link-arg=-Wl,--no-as-needed".to_owned(),
                 &format!("cargo::rustc-link-arg={root}/sdk/lib/librevngLiftReference.so"),
-                &format!("cargo::rustc-link-arg={root}/sdk/lib/librevngLiftLibTcg.so"),
-                &format!("cargo::rustc-link-arg={root}/sdk/lib/librevngPipebox.so"),
                 &format!(
                     "cargo::rustc-link-arg={root}/sdk/lib/librevngFunctionCallIdentification.so"
                 ),

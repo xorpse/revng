@@ -9,5 +9,9 @@ include = ["/src"]
 
 [dependencies]
 cc = "1"
+fd-lock = "4"
+flate2 = "1"
 pkg-config = "0.3"
+tar = "0.4"
 thiserror = "2"
+ureq = "3"

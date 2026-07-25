@@ -10,12 +10,45 @@ decompiles fugue-lifted binaries through the revng pipeline.
 
 ## Locating the SDK
 
-Consumers point two environment variables at the staged trees:
+Two personas:
+
+**Developers** point two environment variables at working trees:
 
 ```sh
 export REVNG_SDK=/path/to/staged-revng-sdk     # include/revng, lib/, share/revng/pipelines
 export REVNG_LLVM=/path/to/pinned-llvm-install # revng's patched LLVM 16 build
 ```
+
+**Everyone else sets nothing.** When both variables are absent, `revng-build`
+provisions the SDK itself, gmp-mpfr-sys style: it downloads pinned source
+tarballs of the revng fork, its LLVM fork, and nanobind, builds them with
+CMake/Ninja, and installs into a version-keyed cache outside `target/`:
+
+```
+${REVNG_BUILD_CACHE:-<platform cache dir>/revng-build}/<target>/<revng12>-<llvm12>/{llvm,sdk}
+```
+
+The platform cache dir is `~/Library/Caches` on macOS and
+`${XDG_CACHE_HOME:-~/.cache}` on Linux. Provisioning emits `cargo:warning`
+progress lines naming the build log; later builds and other projects reuse the
+cache. `cargo clean` never touches it; delete key directories to reclaim
+space. Concurrent builds serialise on a file lock.
+
+Provisioning prerequisites (checked up front, one aggregate error with install
+hints): `cmake`, `ninja`, `python3` on `PATH`, the system `clang++`, and
+boost/libarchive/zstd headers (Linux additionally libc++ and sqlite3 headers).
+`python3` remains a runtime requirement — `librevngPipebox` links the system
+`libpython`.
+
+For docker/CI, either pre-bake the cache as an image layer (`RUN cargo build`
+once during image construction) or mount a volume at `REVNG_BUILD_CACHE` — the
+key path is fully deterministic from the pins. A populated
+`<key>/{llvm,sdk}` pair is relocatable (resource discovery is relative to the
+loaded libraries) and tars up directly as a distribution artefact:
+`tar -C <key> -czf revng-sdk.tar.gz llvm sdk`; unpacking it into a cache key
+directory and touching `<key>/provisioned` is equivalent to having built it.
+
+Setting exactly one of the two variables is an error, not a fallback.
 
 `revng-build` derives everything else by layout convention: headers from
 `$REVNG_SDK/include` and `llvm-config --includedir`, libraries from
@@ -63,10 +96,11 @@ Direct dependants of `revng-sys` may rely on its `DEP_REVNG_SDK`,
 scripts; everything else discovers through the environment variables.
 
 The supported targets are Linux x86-64 and experimental native macOS AArch64.
-macOS builds use revng's pinned LLVM 16 fork and libc++; they support callback
-and reference backends but exclude libtcg. See
-[`../docs/linux-sdk.md`](../docs/linux-sdk.md) and
-[`../docs/macos-sdk.md`](../docs/macos-sdk.md) for staging the SDK trees.
+macOS builds use revng's pinned LLVM 16 fork and libc++; the Rust story
+supports the callback and reference backends and excludes libtcg on both
+targets. See [`../docs/linux-sdk.md`](../docs/linux-sdk.md) and
+[`../docs/macos-sdk.md`](../docs/macos-sdk.md) for staging the SDK trees by
+hand (the developer flow the automatic provisioning replicates).
 
 `revng-fugue`'s pipeline tests must run single-threaded:
 `cargo test -- --test-threads=1`.

@@ -342,6 +342,8 @@ fn decompiles_a_jump_table_switch() {
         c.contains("switch") && c.contains("20U") && c.contains("30U"),
         "expected revng's solver to recover a jump-table switch with distinct cases:\n{c}",
     );
+
+    println!("{c}")
 }
 
 #[test]
