@@ -19,14 +19,6 @@ const LLVM: Source = Source {
     repository: "revng/llvm-project",
     commit: "c9bb030b3d3baca5b21a8694e7207da713cdf6bb",
 };
-const NANOBIND: Source = Source {
-    repository: "revng/nanobind",
-    commit: "a111828dd36d1ce3c8443d2bfc74ac292169a0f3",
-};
-const ROBIN_MAP: Source = Source {
-    repository: "Tessil/robin-map",
-    commit: "4ec1bf19c6a96125ea22062f38c2cf5b958e448e",
-};
 const PYTHON_REQUIREMENTS: [&str; 5] = [
     "black==26.5.1",
     "jinja2==3.1.6",
@@ -210,7 +202,7 @@ impl Cache {
 
     fn fetch_sources(&self) -> Result<(), Error> {
         let scratch = self.scratch();
-        for origin in [&REVNG, &LLVM, &NANOBIND, &ROBIN_MAP] {
+        for origin in [&REVNG, &LLVM] {
             let url = origin.url();
             let response = ureq::get(&url).call().map_err(|source| Error::Download {
                 url: url.clone(),
@@ -221,12 +213,6 @@ impl Cache {
                 .unpack(&scratch)
                 .map_err(|source| Error::io(&scratch, source))?;
         }
-        let ext = scratch.join(NANOBIND.directory()).join("ext/robin_map");
-        if ext.exists() {
-            fs::remove_dir_all(&ext).map_err(|source| Error::io(&ext, source))?;
-        }
-        fs::rename(scratch.join(ROBIN_MAP.directory()), &ext)
-            .map_err(|source| Error::io(&ext, source))?;
         Ok(())
     }
 
@@ -235,7 +221,6 @@ impl Cache {
         let venv = scratch.join("venv");
         let venv_python = venv.join("bin/python");
         let llvm_prefix = self.llvm();
-        let nanobind_install = scratch.join("nanobind-install");
         let expect_compiler = |tool: &str| {
             bootstrap_compiler(os, tool).expect("bootstrap compiler validated during preflight")
         };
@@ -293,21 +278,7 @@ impl Cache {
                 .define("LLVM_ENABLE_Z3_SOLVER", "OFF");
         }
 
-        let configure_nanobind = cmake_common(
-            Step::new("configure-nanobind", "cmake")
-                .arg("-S")
-                .arg(scratch.join(NANOBIND.directory()).join("standalone"))
-                .arg("-B")
-                .arg(scratch.join("nanobind-build"))
-                .arg("-G")
-                .arg("Ninja")
-                .define("CMAKE_INSTALL_PREFIX", &nanobind_install)
-                .define("CMAKE_C_COMPILER", &compiler_c)
-                .define("CMAKE_CXX_COMPILER", &compiler_cxx)
-                .define("Python_EXECUTABLE", &venv_python),
-        );
-
-        let prefix_path = [&llvm_prefix, &nanobind_install]
+        let prefix_path = [&llvm_prefix]
             .into_iter()
             .chain(dependency_prefixes)
             .map(|path| path.display().to_string())
@@ -357,14 +328,6 @@ impl Cache {
             Step::new("install-llvm", "cmake")
                 .arg("--install")
                 .arg(scratch.join("llvm-build")),
-            configure_nanobind,
-            Step::new("build-nanobind", "cmake")
-                .arg("--build")
-                .arg(scratch.join("nanobind-build"))
-                .arg("--parallel"),
-            Step::new("install-nanobind", "cmake")
-                .arg("--install")
-                .arg(scratch.join("nanobind-build")),
             configure_revng,
             Step::new("build-revng", "cmake")
                 .arg("--build")
@@ -609,9 +572,6 @@ mod test {
                     "configure-llvm",
                     "build-llvm",
                     "install-llvm",
-                    "configure-nanobind",
-                    "build-nanobind",
-                    "install-nanobind",
                     "configure-revng",
                     "build-revng",
                     "install-revng",
@@ -621,7 +581,7 @@ mod test {
             assert!(llvm.contains("-DLLVM_ENABLE_DUMP=ON"));
             assert!(llvm.contains("-DLLVM_ENABLE_BINDINGS=OFF"));
             assert!(llvm.contains("-DCMAKE_INSTALL_PREFIX=/cache/target/key/llvm"));
-            let revng = argument_string(&steps[8].args);
+            let revng = argument_string(&steps[5].args);
             assert!(revng.contains("-DREVNG_SDK_BUILD=ON"));
             assert!(revng.contains("-DREVNG_BACKEND_LIBTCG=OFF"));
             assert!(revng.contains("-DREVNG_BUNDLE_TOOLCHAIN_RUNTIME=OFF"));

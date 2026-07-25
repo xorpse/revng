@@ -29,10 +29,7 @@ const MLIR_LIBRARIES: [&str; 3] = [
 const BASE_LIBRARIES: [&str; 3] = ["revngPipelineC", "revngSupport", "revngModel"];
 const REGISTRY_LIBRARIES: [&str; 2] = ["revngFunctionCallIdentification", "revngValueMaterializer"];
 const RUNTIME_LIBRARIES: [&str; 2] = ["libc++.so", "libc++abi.so"];
-const PIPELINES: [(&str, &str); 2] = [
-    ("address-space", "address-space.yml"),
-    ("full", "revng-pipelines.yml"),
-];
+const PIPELINES: [(&str, &str); 1] = [("full", "revng-pipelines.yml")];
 const DEPENDENCIES: [Dependency; 2] = [
     Dependency {
         formula: "boost",
