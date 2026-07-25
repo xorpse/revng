@@ -442,16 +442,12 @@ enable_testing()
 # needed to compile nanobind module and friends, provides the
 # $Python_INCLUDE_DIRS and $Python_LIBRARIES variables
 #
-if(REVNG_SDK_BUILD)
-  find_package(Python3 COMPONENTS Interpreter REQUIRED)
-else()
 find_package(
-    Python3
-    COMPONENTS Interpreter Development
-    REQUIRED)
-endif()
+  Python3
+  COMPONENTS Interpreter Development
+  REQUIRED)
 
-if(NOT REVNG_SDK_BUILD AND NOT TARGET nanobind)
+if(NOT TARGET nanobind)
   find_path(NANOBIND_INCLUDE_DIR nanobind/nanobind.h REQUIRED)
   find_library(NANOBIND_LIBRARY nanobind REQUIRED)
   add_library(nanobind SHARED IMPORTED GLOBAL)
@@ -535,6 +531,8 @@ else()
   message(STATUS "mkdocs not found; skipping HTML documentation")
 endif()
 
+endif()
+
 #
 # Gather helper names
 #
@@ -546,7 +544,6 @@ add_custom_command(
   DEPENDS copy_share ${HELPER_MODULE_LIST})
 add_custom_target(helper-list ALL
                   DEPENDS "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv")
-endif()
 
 #
 # Proceed to subdirectories

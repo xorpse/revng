@@ -15,7 +15,7 @@
 #include "revng/Model/ProgramCounterHandler.h"
 #include "revng/Support/IRBuilder.h"
 
-#include "JumpTargetManager.h"
+#include "revng/Lift/JumpTargetManager.h"
 
 // Forward declarations
 namespace llvm {

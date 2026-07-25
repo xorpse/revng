@@ -21,7 +21,7 @@
 #include "revng/Support/SimplePassManager.h"
 #include "revng/Support/Statistics.h"
 
-#include "JumpTargetManager.h"
+#include "revng/Lift/JumpTargetManager.h"
 #include "RootAnalyzer.h"
 #include "SubGraph.h"
 

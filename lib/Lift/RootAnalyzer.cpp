@@ -36,7 +36,7 @@
 #include "revng/TypeShrinking/TypeShrinking.h"
 #include "revng/ValueMaterializer/DataFlowGraph.h"
 
-#include "JumpTargetManager.h"
+#include "revng/Lift/JumpTargetManager.h"
 #include "RootAnalyzer.h"
 #include "ValueMaterializerPass.h"
 

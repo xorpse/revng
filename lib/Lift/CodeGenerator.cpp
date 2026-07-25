@@ -71,7 +71,7 @@
 #include "CodeGenerator.h"
 #include "ExternalJumpsHandler.h"
 #include "InstructionTranslator.h"
-#include "JumpTargetManager.h"
+#include "revng/Lift/JumpTargetManager.h"
 
 RegisterIRHelper CPULoopExitHelper("cpu_loop_exit");
 RegisterIRHelper InitializeEnvHelper("helper_initialize_env");
