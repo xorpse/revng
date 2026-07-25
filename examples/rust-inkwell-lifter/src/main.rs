@@ -1,16 +1,16 @@
 use std::collections::BTreeMap;
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::Path;
 use std::ptr;
 use std::slice;
 
-use inkwell::values::{AsValueRef, BasicMetadataValueEnum, PointerValue};
 use inkwell::AddressSpace;
+use inkwell::values::{AsValueRef, BasicMetadataValueEnum, PointerValue};
 
 #[cxx::bridge(namespace = "revng_inkwell")]
 mod ffi {
     unsafe extern "C++" {
-        include!("include/bridge.h");
+        include!("revng-rust-inkwell-lifter-example/cxx/include/bridge.h");
 
         unsafe fn tag_root(function: usize);
         unsafe fn tag_marker(function: usize);
@@ -35,13 +35,6 @@ fn parse_address(value: &str) -> Result<u64, String> {
         .strip_prefix("0x")
         .ok_or_else(|| format!("invalid revng address: {value}"))?;
     u64::from_str_radix(address, 16).map_err(|error| error.to_string())
-}
-
-fn model_entry(model_yaml: &str) -> Option<&str> {
-    let suffix = ":Code_x86_64";
-    let end = model_yaml.find(suffix)? + suffix.len();
-    let start = model_yaml[..end].rfind("0x")?;
-    Some(&model_yaml[start..end])
 }
 
 fn decode_x86_64(binary: &[u8], entry: u64) -> Result<Vec<DecodedInstruction>, String> {
@@ -79,11 +72,11 @@ struct CallbackContext {
 }
 
 unsafe extern "C" fn architecture(_: *mut c_void) -> *const c_char {
-    b"x86_64\0".as_ptr().cast()
+    c"x86_64".as_ptr()
 }
 
 unsafe extern "C" fn entry_point(_: *mut c_void) -> *const c_char {
-    b"0x400000:Code_x86_64\0".as_ptr().cast()
+    c"0x400000:Code_x86_64".as_ptr()
 }
 
 unsafe extern "C" fn mapping_count(_: *mut c_void) -> u64 {
@@ -101,13 +94,13 @@ unsafe extern "C" fn mapping_at(
     let context = unsafe { &mut *opaque.cast::<CallbackContext>() };
     unsafe {
         *output = revng_sys::rp_address_space_mapping {
-            start: b"0x400000:Code_x86_64\0".as_ptr().cast(),
+            start: c"0x400000:Code_x86_64".as_ptr(),
             virtual_size: context.bytes.len() as u64,
             backing_size: context.bytes.len() as u64,
             readable: true,
             writeable: false,
             executable: true,
-            name: b"rust-inkwell-example-code\0".as_ptr().cast(),
+            name: c"rust-inkwell-example-code".as_ptr(),
         };
     }
     true
@@ -146,7 +139,7 @@ unsafe extern "C" fn extra_code_address_count(_: *mut c_void) -> u64 {
 
 unsafe extern "C" fn lift_callback(
     opaque: *mut c_void,
-    model_yaml: *const c_char,
+    _model: *const c_void,
     binary: *const revng_sys::rp_binary_view,
     entries: *const *const c_char,
     entry_count: u64,
@@ -154,7 +147,6 @@ unsafe extern "C" fn lift_callback(
     error_message: *mut *const c_char,
 ) -> bool {
     let context = unsafe { &mut *opaque.cast::<CallbackContext>() };
-    let model_yaml = unsafe { CStr::from_ptr(model_yaml) }.to_string_lossy();
     let entry_pointers = if entry_count == 0 {
         &[][..]
     } else {
@@ -171,7 +163,6 @@ unsafe extern "C" fn lift_callback(
     let entry = rust_entries
         .first()
         .map(String::as_str)
-        .or_else(|| model_entry(&model_yaml))
         .unwrap_or("0x400000:Code_x86_64");
     let mut bytes = [0_u8; 5];
     if !unsafe {
@@ -189,7 +180,7 @@ unsafe extern "C" fn lift_callback(
         }
         return false;
     }
-    let result = lift(&model_yaml, &bytes, rust_entries, output as usize);
+    let result = lift(&bytes, entry, output as usize);
     if result.is_empty() {
         return true;
     }
@@ -444,17 +435,7 @@ fn emit_with_inkwell(
     module.verify().map_err(|error| error.to_string())
 }
 
-fn lift(model_yaml: &str, binary: &[u8], entries: Vec<String>, output: usize) -> String {
-    if !model_yaml.contains("x86_64") {
-        return "the example Inkwell backend only supports x86_64".into();
-    }
-    let Some(entry_text) = entries
-        .first()
-        .map(String::as_str)
-        .or_else(|| model_entry(model_yaml))
-    else {
-        return "the Inkwell backend needs an entry point".into();
-    };
+fn lift(binary: &[u8], entry_text: &str, output: usize) -> String {
     let entry = match parse_address(entry_text) {
         Ok(value) => value,
         Err(error) => return error,
@@ -542,7 +523,7 @@ unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<
             0,
             0,
             ptr::null(),
-            b"\0".as_ptr().cast(),
+            c"".as_ptr(),
             error,
         )
     };
@@ -558,20 +539,20 @@ unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<
     };
     let arguments = [
         revng_sys::rp_cabi_argument {
-            name: b"a\0".as_ptr().cast(),
+            name: c"a".as_ptr(),
             type_: int32,
         },
         revng_sys::rp_cabi_argument {
-            name: b"b\0".as_ptr().cast(),
+            name: c"b".as_ptr(),
             type_: int32,
         },
     ];
     if !unsafe {
         revng_sys::rp_manager_set_cabi_prototype(
             manager,
-            b"0x400000:Code_x86_64\0".as_ptr().cast(),
-            b"SystemV_x86_64\0".as_ptr().cast(),
-            b"add\0".as_ptr().cast(),
+            c"0x400000:Code_x86_64".as_ptr(),
+            c"SystemV_x86_64".as_ptr(),
+            c"add".as_ptr(),
             arguments.len() as u64,
             arguments.as_ptr(),
             &int32,
@@ -610,9 +591,9 @@ unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<
     let lifted = unsafe {
         revng_sys::rp_manager_produce_artifact(
             manager,
-            b"lift\0".as_ptr().cast(),
-            b"root.bc.zstd\0".as_ptr().cast(),
-            b"root\0".as_ptr().cast(),
+            c"lift".as_ptr(),
+            c"root.bc.zstd".as_ptr(),
+            c"root".as_ptr(),
             0,
             ptr::null(),
             error,
@@ -629,13 +610,9 @@ unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<
     unsafe { revng_sys::rp_buffer_destroy(lifted) };
 
     let transformed = unsafe {
-        revng_inkwell::transform_llvm_module(
-            manager,
-            CStr::from_bytes_with_nul_unchecked(b"lift\0"),
-            CStr::from_bytes_with_nul_unchecked(b"root.bc.zstd\0"),
-            error,
-            |module| module.run_passes("instcombine,reassociate"),
-        )
+        revng_inkwell::transform_llvm_module(manager, c"lift", c"root.bc.zstd", error, |module| {
+            module.run_passes("instcombine,reassociate")
+        })
     };
     if !transformed {
         let result = unsafe { pipeline_error(error, "Inkwell transform failed") };
@@ -657,9 +634,9 @@ unsafe fn run_initialized(backend_name: &str, artifact: Artifact) -> Result<Vec<
         let output = unsafe {
             revng_sys::rp_manager_produce_artifact(
                 manager,
-                b"lift\0".as_ptr().cast(),
-                b"root.bc.zstd\0".as_ptr().cast(),
-                b"root\0".as_ptr().cast(),
+                c"lift".as_ptr(),
+                c"root.bc.zstd".as_ptr(),
+                c"root".as_ptr(),
                 0,
                 ptr::null(),
                 error,
@@ -767,20 +744,12 @@ fn main() {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{decode_x86_64, model_entry, parse_address};
+mod test {
+    use super::{decode_x86_64, parse_address};
 
     #[test]
     fn parses_revng_meta_address() {
         assert_eq!(parse_address("0x400000:Code_x86_64").unwrap(), 0x400000);
-    }
-
-    #[test]
-    fn finds_entry_in_model() {
-        assert_eq!(
-            model_entry("EntryPoint: 0x400000:Code_x86_64\n"),
-            Some("0x400000:Code_x86_64")
-        );
     }
 
     #[test]
@@ -813,11 +782,15 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_or_unterminated_input() {
-        assert!(decode_x86_64(&[0xcc], 0x400000)
-            .unwrap_err()
-            .contains("unsupported opcode"));
-        assert!(decode_x86_64(&[0x90], 0x400000)
-            .unwrap_err()
-            .contains("no RET"));
+        assert!(
+            decode_x86_64(&[0xcc], 0x400000)
+                .unwrap_err()
+                .contains("unsupported opcode")
+        );
+        assert!(
+            decode_x86_64(&[0x90], 0x400000)
+                .unwrap_err()
+                .contains("no RET")
+        );
     }
 }

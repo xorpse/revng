@@ -1,3 +1,5 @@
+#include "revng-fugue/cxx/include/lifter.h"
+
 #include <cstdint>
 #include <memory>
 #include <vector>

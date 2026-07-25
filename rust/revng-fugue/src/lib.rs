@@ -1,11 +1,11 @@
 mod address_space;
 mod binary;
+mod bridge;
 mod error;
 mod lifter;
 mod manager;
 mod prototype;
 mod ptml;
-mod tags;
 mod translate;
 
 use std::cell::RefCell;

@@ -1,0 +1,13 @@
+[package]
+name = "revng-build"
+version = "0.1.0"
+edition = "2024"
+description = "Build-script support for locating and linking a staged revng SDK and its pinned LLVM"
+license = "MIT"
+publish = false
+include = ["/src"]
+
+[dependencies]
+cc = "1"
+pkg-config = "0.3"
+thiserror = "2"

@@ -18,8 +18,8 @@ use inkwell::{AddressSpace, IntPredicate};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::binary::{Architecture, Binary};
+use crate::bridge;
 use crate::lifter::FugueLifter;
-use crate::tags;
 
 pub(crate) use registers::RegisterFile;
 
@@ -290,7 +290,7 @@ impl<'a, 'ctx> Translator<'a, 'ctx> {
         let function = self
             .module
             .add_function("revng_abort", ty, Some(Linkage::External));
-        unsafe { tags::tag_helper(raw(function)) };
+        unsafe { bridge::tag_helper(raw(function)) };
         function
     }
 
@@ -336,7 +336,7 @@ impl<'a, 'ctx> Translator<'a, 'ctx> {
         }
 
         let block = raw_block(self.builder.get_insert_block().expect("an open block"));
-        unsafe { tags::emit_unsupported(block, &name, &reads, &writes) };
+        unsafe { bridge::emit_unsupported(block, &name, &reads, &writes) };
         Ok(())
     }
 
@@ -431,7 +431,7 @@ impl<'a, 'ctx> Translator<'a, 'ctx> {
             let terminator = block
                 .get_terminator()
                 .expect("the call block is terminated");
-            unsafe { tags::emit_jump_to_symbol(raw(terminator), symbol) };
+            unsafe { bridge::emit_jump_to_symbol(raw(terminator), symbol) };
         }
         Ok(())
     }
@@ -779,7 +779,7 @@ impl<'a, 'ctx> Translator<'a, 'ctx> {
             let global = self.module.add_global(ty, None, name);
             global.set_linkage(Linkage::External);
             global.set_initializer(&ty.const_zero());
-            unsafe { tags::tag_csv(raw(global)) };
+            unsafe { bridge::tag_csv(raw(global)) };
             global
         });
         self.csvs.insert(name.to_owned(), global);

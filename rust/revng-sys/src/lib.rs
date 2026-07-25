@@ -176,7 +176,7 @@ pub struct rp_named_typed_register {
     pub type_: rp_type,
 }
 
-extern "C" {
+unsafe extern "C" {
     pub fn rp_initialize(
         argc: c_int,
         argv: *const *const c_char,

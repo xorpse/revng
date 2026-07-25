@@ -8,7 +8,7 @@ use inkwell::module::Module;
 use inkwell::values::{AsValueRef, IntValue, PointerValue};
 
 use crate::binary::Architecture;
-use crate::tags;
+use crate::bridge;
 
 #[repr(C)]
 struct State {
@@ -29,7 +29,7 @@ impl<'ctx> FugueLifter<'ctx> {
         entry: u64,
     ) -> Self {
         let handle = unsafe {
-            tags::fugue_lifter_new(
+            bridge::fugue_lifter_new(
                 model as usize,
                 view as usize,
                 module.as_mut_ptr() as usize,
@@ -52,18 +52,18 @@ impl<'ctx> FugueLifter<'ctx> {
 
     pub(crate) fn peek(&mut self) -> Option<(u64, BasicBlock<'ctx>)> {
         let mut address = 0u64;
-        let block = unsafe { tags::fugue_lifter_peek(self.raw(), &mut address) };
+        let block = unsafe { bridge::fugue_lifter_peek(self.raw(), &mut address) };
         let block = unsafe { BasicBlock::new(block as LLVMBasicBlockRef) }?;
         Some((address, block))
     }
 
     pub(crate) fn diverge(&mut self, block: BasicBlock<'ctx>, address: u64) -> bool {
-        unsafe { tags::fugue_lifter_diverge(self.raw(), block.as_mut_ptr() as usize, address) }
+        unsafe { bridge::fugue_lifter_diverge(self.raw(), block.as_mut_ptr() as usize, address) }
     }
 
     pub(crate) fn new_pc(&mut self, block: BasicBlock<'ctx>, address: u64, size: u64, first: bool) {
         unsafe {
-            tags::fugue_lifter_new_pc(
+            bridge::fugue_lifter_new_pc(
                 self.raw(),
                 block.as_mut_ptr() as usize,
                 address,
@@ -75,13 +75,13 @@ impl<'ctx> FugueLifter<'ctx> {
 
     pub(crate) fn exit_constant(&mut self, block: BasicBlock<'ctx>, target: u64) {
         unsafe {
-            tags::fugue_lifter_exit_constant(self.raw(), block.as_mut_ptr() as usize, target)
+            bridge::fugue_lifter_exit_constant(self.raw(), block.as_mut_ptr() as usize, target)
         };
     }
 
     pub(crate) fn exit_dynamic(&mut self, block: BasicBlock<'ctx>, value: IntValue<'ctx>) {
         unsafe {
-            tags::fugue_lifter_exit_dynamic(
+            bridge::fugue_lifter_exit_dynamic(
                 self.raw(),
                 block.as_mut_ptr() as usize,
                 value.as_value_ref() as usize,
@@ -99,7 +99,7 @@ impl<'ctx> FugueLifter<'ctx> {
     ) {
         let link_register = link_register.map_or(0, |register| register.as_value_ref() as usize);
         unsafe {
-            tags::fugue_lifter_exit_call(
+            bridge::fugue_lifter_exit_call(
                 self.raw(),
                 block.as_mut_ptr() as usize,
                 target,
@@ -111,16 +111,16 @@ impl<'ctx> FugueLifter<'ctx> {
     }
 
     pub(crate) fn register_direct_jumps(&mut self) {
-        unsafe { tags::fugue_lifter_register_direct_jumps(self.raw()) };
+        unsafe { bridge::fugue_lifter_register_direct_jumps(self.raw()) };
     }
 
     pub(crate) fn finalise(&mut self) {
-        unsafe { tags::fugue_lifter_finalize(self.raw()) };
+        unsafe { bridge::fugue_lifter_finalize(self.raw()) };
     }
 }
 
 impl Drop for FugueLifter<'_> {
     fn drop(&mut self) {
-        unsafe { tags::fugue_lifter_free(self.raw()) };
+        unsafe { bridge::fugue_lifter_free(self.raw()) };
     }
 }

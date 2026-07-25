@@ -19,7 +19,7 @@ mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("include/bridge.h");
+        include!("revng-rust-lifter-example/cxx/include/bridge.h");
 
         fn run(backend: &mut RustBackend, pipeline_path: &str, backend_name: &str) -> String;
         fn emit_x86_64(output: usize, instructions: &[DecodedInstruction], entry: u64) -> String;

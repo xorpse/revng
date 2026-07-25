@@ -102,8 +102,9 @@ C++ shim only applies revng-specific tags, block metadata, and `BasicBlockID`
 constants. Both Rust examples can select their custom callback, the reference
 backend, or libtcg from the same executable.
 
-Reusable Rust bindings and relocatable SDK discovery live under
+Reusable Rust bindings and SDK discovery live under
 [`rust/revng-sys`](../rust/revng-sys) and
-[`rust/revng-sdk`](../rust/revng-sdk). The SDK manifest records the generated
-headers, matching LLVM installation, runtime libraries, pipelines, and backend
-DSOs without exposing the revng build-tree layout to consumers.
+[`rust/revng-build`](../rust/revng-build). Build scripts locate the staged SDK
+and its pinned LLVM through the `REVNG_SDK` and `REVNG_LLVM` prefixes and
+derive headers, runtime libraries, pipelines, and backend DSOs by layout
+convention without exposing the revng build-tree layout to consumers.

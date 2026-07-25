@@ -1,11 +1,12 @@
 [package]
 name = "revng-sys"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+description = "Low-level FFI bindings to revng's PipelineC interface"
 links = "revng"
 license = "MIT"
 publish = false
+include = ["/build.rs", "/src"]
 
 [build-dependencies]
-revng-sdk = { path = "../revng-sdk" }
-
+revng-build = { version = "0.1", path = "../revng-build" }

@@ -9,12 +9,12 @@ adapter turns the decoded instructions into the `root` LLVM module required by
 revng. Keeping this adapter in C++ avoids exposing LLVM C++ ownership and
 revng's metadata helpers to Rust.
 
-Build revng and generate a relocatable SDK manifest as described in
+Build revng and export the SDK prefixes as described in
 [`../../rust/README.md`](../../rust/README.md), then run:
 
 ```sh
-REVNG_SDK_MANIFEST=/path/to/revng-sdk.json cargo run -- rust
-REVNG_SDK_MANIFEST=/path/to/revng-sdk.json cargo run -- reference-x86_64
+cargo run -- rust
+cargo run -- reference-x86_64
 ```
 
 Use `libtcg` as the argument with a build configured with

@@ -147,21 +147,19 @@ revng2 project dump-pipeline -o /tmp/revng-pipeline.yml
 
 ## Consumer SDK
 
-Generate the relocatable descriptor used by the Rust examples:
+Point the Rust crates and examples at the staged trees:
 
 ```sh
-.venv313/bin/python scripts/generate-revng-sdk-manifest.py \
-  --sdk-root stage-decompiler \
-  --llvm-dir revng-llvm-install \
-  --cxx /usr/bin/clang++ \
-  --pipeline address-space=stage-decompiler/share/revng/pipelines/address-space.yml \
-  --pipeline full=stage-decompiler/share/revng/pipelines/revng-pipelines.yml \
-  --output stage-decompiler/revng-sdk.json
+export REVNG_SDK="$PWD/stage-decompiler"
+export REVNG_LLVM="$PWD/revng-llvm-install"
 ```
 
-Use Apple Clang for consumer-side C++ shims so the macOS SDK is discovered
-automatically. The matching pinned LLVM headers are still needed when a custom
-backend manipulates LLVM IR directly, as the Inkwell example does.
+Boost and libarchive headers are discovered automatically from homebrew;
+`BOOST_ROOT`/`LIBARCHIVE_ROOT` (or the `*_INCLUDEDIR` variants) override the
+discovery when needed.
+
+See [`../rust/README.md`](../rust/README.md) for the full discovery and
+linkage contract.
 
 The pure-C example is in [`../examples/lifter-library.c`](../examples/lifter-library.c),
 the full decompiler example is in

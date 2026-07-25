@@ -1,4 +1,4 @@
-#include "include/bridge.h"
+#include "revng-rust-lifter-example/cxx/include/bridge.h"
 
 #include <algorithm>
 #include <cstdint>

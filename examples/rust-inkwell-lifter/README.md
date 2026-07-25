@@ -5,15 +5,14 @@ the LLVM module directly with Inkwell. The small C++20 shim only supplies the
 revng-specific function tags, block metadata, and `BasicBlockID` constant that
 are not part of LLVM's C API.
 
-The example consumes the reusable `../../rust/revng-sys` crate. Its build is
-described by a relocatable `revng-sdk.json`, instead of repository-relative
-build and dependency paths. Generate one as described in
-[`../../rust/README.md`](../../rust/README.md), then run:
+The example consumes the reusable `../../rust/revng-sys` crate and locates the
+staged SDK through the `REVNG_SDK` and `REVNG_LLVM` prefixes. Export them as
+described in [`../../rust/README.md`](../../rust/README.md), then run:
 
 ```sh
-REVNG_SDK_MANIFEST=/path/to/revng-sdk.json cargo run -- inkwell
-REVNG_SDK_MANIFEST=/path/to/revng-sdk.json cargo run -- reference-x86_64
-REVNG_SDK_MANIFEST=/path/to/revng-sdk-with-libtcg.json cargo run -- libtcg
+cargo run -- inkwell
+cargo run -- reference-x86_64
+cargo run -- libtcg   # Linux SDKs only
 ```
 
 The example lifts a five-byte x86-64 implementation of `int32_t add(int32_t a,
@@ -28,7 +27,7 @@ returns.
 
 Native macOS AArch64 support is experimental and uses revng's pinned LLVM/MLIR
 fork. It supports the `inkwell` and `reference-x86_64` backends. libtcg remains
-Linux-only and is never included in a macOS SDK manifest.
+Linux-only and is never staged in a macOS SDK.
 
 ## Full pipeline to C
 
@@ -41,10 +40,8 @@ and C emission. Run it with either the Inkwell callback or the built-in
 reference backend:
 
 ```sh
-REVNG_SDK_MANIFEST=/path/to/revng-sdk.json \
-  cargo run --bin revng-rust-decompile-example -- inkwell inkwell.c
-REVNG_SDK_MANIFEST=/path/to/revng-sdk.json \
-  cargo run --bin revng-rust-decompile-example -- reference-x86_64 reference.c
+cargo run --bin revng-rust-decompile-example -- inkwell inkwell.c
+cargo run --bin revng-rust-decompile-example -- reference-x86_64 reference.c
 ```
 
 The manager is backed by range-read callbacks, so creating it does not copy the
@@ -53,12 +50,5 @@ only the instruction bytes it decodes. PipelineC's direct decompilation API
 returns ordinary C text; callers that need token markup can request the PTML
 variant instead.
 
-The SDK manifest used by this executable must contain both pipeline entries:
-
-```sh
-python scripts/generate-revng-sdk-manifest.py \
-  ... \
-  --pipeline address-space=stage-decompiler/share/revng/pipelines/address-space.yml \
-  --pipeline full=stage-decompiler/share/revng/pipelines/revng-pipelines.yml \
-  --output stage-decompiler/revng-sdk.json
-```
+The staged SDK used by this executable must ship both pipeline YAMLs under
+`share/revng/pipelines`: `address-space.yml` and `revng-pipelines.yml`.

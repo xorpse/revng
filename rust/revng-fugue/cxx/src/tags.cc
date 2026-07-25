@@ -1,3 +1,5 @@
+#include "revng-fugue/cxx/include/tags.h"
+
 #include <cstddef>
 #include <cstdint>
 

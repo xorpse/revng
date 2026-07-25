@@ -243,22 +243,18 @@ SDK descriptor below can use their existing locations directly.
 
 ## Consumer SDK
 
-Generate the descriptor consumed by the Rust examples:
+Point the Rust crates and examples at the staged trees:
 
 ```sh
-CXX_RUNTIME_LIBRARY="$("$LLVM_INSTALL/bin/clang++" \
-  -print-file-name=libc++.so)"
-CXX_RUNTIME_DIR="$(dirname "$CXX_RUNTIME_LIBRARY")"
-
-.venv/bin/python scripts/generate-revng-sdk-manifest.py \
-  --sdk-root "$SDK_ROOT" \
-  --llvm-dir "$LLVM_INSTALL" \
-  --cxx "$LLVM_INSTALL/bin/clang++" \
-  --runtime-lib-dir "$CXX_RUNTIME_DIR" \
-  --pipeline address-space="$SDK_ROOT/share/revng/pipelines/address-space.yml" \
-  --pipeline full="$SDK_ROOT/share/revng/pipelines/revng-pipelines.yml" \
-  --output "$SDK_ROOT/revng-sdk.json"
+export REVNG_SDK="$SDK_ROOT"
+export REVNG_LLVM="$LLVM_INSTALL"
 ```
+
+The build scripts derive everything else by layout convention — including the
+libc++ runtime, located through
+`"$LLVM_INSTALL/bin/clang++" -print-file-name=libc++.so`. See
+[`../rust/README.md`](../rust/README.md) for the full discovery and linkage
+contract.
 
 Build and run the pure-C installed-SDK consumer with both built-in backends:
 
@@ -273,10 +269,8 @@ cmake --build build-linux-c-consumer
 Run the Rust/cxx and Rust/Inkwell callback backends:
 
 ```sh
-REVNG_SDK_MANIFEST="$SDK_ROOT/revng-sdk.json" \
-  cargo run --manifest-path examples/rust-lifter/Cargo.toml -- rust
-REVNG_SDK_MANIFEST="$SDK_ROOT/revng-sdk.json" \
-  cargo run --manifest-path examples/rust-inkwell-lifter/Cargo.toml -- inkwell
+cargo run --manifest-path examples/rust-lifter/Cargo.toml -- rust
+cargo run --manifest-path examples/rust-inkwell-lifter/Cargo.toml -- inkwell
 ```
 
 The same examples can select `reference-x86_64` or `libtcg` to exercise the

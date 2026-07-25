@@ -1,8 +1,8 @@
 #[cxx::bridge(namespace = "revng_fugue")]
 mod ffi {
     unsafe extern "C++" {
-        include!("include/tags.h");
-        include!("include/lifter.h");
+        include!("revng-fugue/cxx/include/tags.h");
+        include!("revng-fugue/cxx/include/lifter.h");
 
         unsafe fn tag_helper(function: usize);
         unsafe fn tag_csv(global: usize);

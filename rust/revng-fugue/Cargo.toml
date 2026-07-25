@@ -2,20 +2,22 @@
 name = "revng-fugue"
 version = "0.1.0"
 edition = "2024"
+description = "Decompilation of fugue-lifted binaries through the revng pipeline"
 license = "MIT"
 publish = false
+include = ["/build.rs", "/cxx", "/src", "/tests"]
 
 [dependencies]
 clap = "4"
-cxx = "1.0"
+cxx = "1"
 fallible-iterator = "0.3"
 fugue-core = { git = "https://github.com/fugue-re/fugue-core-next", branch = "feature/overlapping-segments", features = ["static-lifters"] }
 inkwell = { version = "0.9", default-features = false, features = ["llvm16-0-no-llvm-linking", "target-x86"] }
-revng-inkwell = { path = "../revng-inkwell" }
-revng-sys = { path = "../revng-sys" }
+revng-inkwell = { version = "0.1", path = "../revng-inkwell" }
+revng-sys = { version = "0.1", path = "../revng-sys" }
 rustc-hash = "2"
 thiserror = "2"
 
 [build-dependencies]
-cxx-build = "1.0"
-revng-sdk = { path = "../revng-sdk" }
+cxx-build = "1"
+revng-build = { version = "0.1", path = "../revng-build" }
