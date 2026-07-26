@@ -116,6 +116,7 @@ add_flag_if_available("-Wno-ambiguous-reversed-operator")
 add_flag_if_available("-Wno-unnecessary-virtual-specifier")
 add_flag_if_available("-Wno-alias-template-in-declaration-name")
 add_flag_if_available("-Wno-unused-but-set-variable")
+add_flag_if_available("-Wno-missing-designated-field-initializers")
 
 # Add some extra warnings
 add_flag_if_available("-Wstrict-aliasing")

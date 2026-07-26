@@ -14,7 +14,7 @@ use crate::{DEPENDENCIES, Dependency, Error, Os};
 
 const REVNG: Source = Source {
     repository: "xorpse/revng",
-    commit: "3d92da24362a94cbb6ab963cd1be6d717c3828d8",
+    commit: "6cd407341273268d74674cc86c9eeb285e93b542",
 };
 const LLVM: Source = Source {
     repository: "revng/llvm-project",
@@ -286,7 +286,7 @@ impl Cache {
             .collect::<Vec<String>>()
             .join(";");
 
-        let configure_revng = cmake_common(
+        let mut configure_revng = cmake_common(
             Step::new("configure-revng", "cmake")
                 .arg("-S")
                 .arg(scratch.join(REVNG.directory()))
@@ -307,6 +307,12 @@ impl Cache {
                 .define("REVNG_BUILD_RUNTIME_SUPPORT", "OFF")
                 .define("REVNG_BUNDLE_TOOLCHAIN_RUNTIME", "OFF"),
         );
+        if os == Os::Linux {
+            configure_revng = configure_revng
+                .define("CMAKE_CXX_FLAGS", "-stdlib=libc++")
+                .define("CMAKE_EXE_LINKER_FLAGS", "-stdlib=libc++")
+                .define("CMAKE_SHARED_LINKER_FLAGS", "-stdlib=libc++");
+        }
 
         let mut pip_install = Step::new("python-requirements", venv.join("bin/pip"))
             .arg("install")
@@ -611,7 +617,7 @@ mod test {
     fn cache_key_is_deterministic() {
         assert_eq!(
             key_path(Path::new("/cache"), "aarch64-apple-darwin"),
-            PathBuf::from("/cache/aarch64-apple-darwin/3d92da24362a-c9bb030b3d3b")
+            PathBuf::from("/cache/aarch64-apple-darwin/6cd407341273-c9bb030b3d3b")
         );
     }
 
@@ -656,6 +662,7 @@ mod test {
                 Os::Linux => {
                     assert!(llvm.contains("-DLLVM_ENABLE_LIBCXX=ON"));
                     assert!(!llvm.contains("-nostdinc++"));
+                    assert!(revng.contains("-DCMAKE_CXX_FLAGS=-stdlib=libc++"));
                     assert!(!revng.contains("/cache/target/key/llvm/bin/clang++"));
                     assert!(!llvm.contains("-DCMAKE_OSX_ARCHITECTURES=arm64"));
                 }
