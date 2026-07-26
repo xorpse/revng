@@ -1,0 +1,13 @@
+[package]
+name = "revng-package"
+version = "0.1.0"
+edition = "2024"
+description = "Assemble a relocatable runtime package from a provisioned revng cache and a consumer binary"
+license = "MIT"
+publish = false
+include = ["/src"]
+
+[dependencies]
+clap = "4"
+object = "0.36"
+thiserror = "2"

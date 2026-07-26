@@ -64,7 +64,7 @@ llvm_map_components_to_libnames(
   X86Desc
   X86Info)
 
-if(APPLE)
+if(APPLE OR CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
   llvm_map_components_to_libnames(
     LLVM_NATIVE_LIBRARIES
     AArch64AsmParser

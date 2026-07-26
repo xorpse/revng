@@ -79,7 +79,7 @@ pub enum Error {
     Preflight(MissingPrerequisites),
     #[error("failed to run {}: {source}", path.display())]
     Toolchain { path: PathBuf, source: io::Error },
-    #[error("revng supports linux-x86_64 and macos-aarch64, not {os}-{arch}")]
+    #[error("revng supports linux (any arch) and macos-aarch64, not {os}-{arch}")]
     UnsupportedTarget { arch: String, os: String },
 }
 
@@ -193,6 +193,13 @@ impl Os {
     fn library(self, stem: &str) -> String {
         format!("lib{stem}{}", self.extension())
     }
+
+    fn loader_origin(self) -> &'static str {
+        match self {
+            Os::Linux => "$ORIGIN",
+            Os::MacOs => "@loader_path",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -205,6 +212,7 @@ pub struct Sdk {
     component_llvm: bool,
     link_files: Vec<PathBuf>,
     dependency_includes: Vec<PathBuf>,
+    portable: bool,
     os: Os,
 }
 
@@ -215,7 +223,7 @@ impl Sdk {
         let target_arch =
             env::var("CARGO_CFG_TARGET_ARCH").expect("CARGO_CFG_TARGET_ARCH is set by Cargo");
         let os = match (target_os.as_str(), target_arch.as_str()) {
-            ("linux", "x86_64") => Os::Linux,
+            ("linux", _) => Os::Linux,
             ("macos", "aarch64") => Os::MacOs,
             _ => {
                 return Err(Error::UnsupportedTarget {
@@ -307,13 +315,20 @@ impl Sdk {
             dependency_includes.extend(dependency.resolve()?);
         }
 
-        for variable in ["REVNG_SDK", "REVNG_LLVM", "REVNG_BUILD_CACHE"] {
+        for variable in [
+            "REVNG_SDK",
+            "REVNG_LLVM",
+            "REVNG_BUILD_CACHE",
+            "REVNG_BUILD_PORTABLE",
+        ] {
             println!("cargo::rerun-if-env-changed={variable}");
         }
         for dependency in &DEPENDENCIES {
             println!("cargo::rerun-if-env-changed={}", dependency.includedir);
             println!("cargo::rerun-if-env-changed={}", dependency.root);
         }
+
+        let portable = env::var_os("REVNG_BUILD_PORTABLE").is_some_and(|value| !value.is_empty());
 
         Ok(Self {
             prefix,
@@ -324,6 +339,7 @@ impl Sdk {
             component_llvm,
             link_files,
             dependency_includes,
+            portable,
             os,
         })
     }
@@ -338,6 +354,11 @@ impl Sdk {
 
     pub fn llvm_major(&self) -> u32 {
         self.llvm_major
+    }
+
+    pub fn with_portable(mut self, portable: bool) -> Self {
+        self.portable = portable;
+        self
     }
 
     pub fn compiler(&self) -> PathBuf {
@@ -487,13 +508,24 @@ impl Sdk {
         for path in &self.link_files {
             directives.push(format!("cargo::rustc-link-arg={}", path.display()));
         }
-        for directory in &search_directories {
-            directives.push(format!(
-                "cargo::rustc-link-arg=-Wl,-rpath,{}",
-                directory.display()
-            ));
+        for rpath in self.rpaths(&search_directories) {
+            directives.push(format!("cargo::rustc-link-arg=-Wl,-rpath,{rpath}"));
         }
         directives
+    }
+
+    fn rpaths(&self, search_directories: &[PathBuf]) -> Vec<String> {
+        if !self.portable {
+            return search_directories
+                .iter()
+                .map(|directory| directory.display().to_string())
+                .collect();
+        }
+        let origin = self.os.loader_origin();
+        vec![
+            format!("{origin}/../lib"),
+            format!("{origin}/../lib/revng/analyses"),
+        ]
     }
 }
 
@@ -539,6 +571,7 @@ mod test {
                 component_llvm,
                 link_files,
                 dependency_includes: Vec::new(),
+                portable: false,
                 os,
             }
         }
@@ -680,6 +713,56 @@ mod test {
                 &format!("cargo::rustc-link-arg=-Wl,-rpath,{root}/sdk/lib/revng/analyses"),
                 &format!("cargo::rustc-link-arg=-Wl,-rpath,{root}/llvm/lib"),
                 &format!("cargo::rustc-link-arg=-Wl,-rpath,{root}/runtime"),
+            ]
+        );
+    }
+
+    #[test]
+    fn portable_rpaths_are_relative_to_the_package() {
+        let fixture = Fixture::new("portable");
+        for path in [
+            "sdk/lib/librevngPipelineC.dylib",
+            "sdk/lib/librevngLiftReference.dylib",
+            "sdk/lib/revng/analyses/librevngA.dylib",
+            "llvm/lib/libLLVMCore.dylib",
+        ] {
+            fixture.file(path);
+        }
+        let mut sdk = fixture.sdk(Os::MacOs, true, Vec::new());
+        sdk.portable = true;
+        let directives = sdk.link_directives();
+
+        let rpaths = directives
+            .iter()
+            .filter(|directive| directive.contains("-rpath,"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rpaths,
+            [
+                "cargo::rustc-link-arg=-Wl,-rpath,@loader_path/../lib",
+                "cargo::rustc-link-arg=-Wl,-rpath,@loader_path/../lib/revng/analyses",
+            ]
+        );
+
+        let root = fixture.root.display();
+        assert!(directives.contains(&format!("cargo::rustc-link-search=native={root}/llvm/lib")));
+        assert!(
+            !directives
+                .iter()
+                .any(|directive| directive.contains(&format!("-rpath,{root}")))
+        );
+
+        sdk.os = Os::Linux;
+        let linux = sdk
+            .link_directives()
+            .into_iter()
+            .filter(|directive| directive.contains("-rpath,"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            linux,
+            [
+                "cargo::rustc-link-arg=-Wl,-rpath,$ORIGIN/../lib",
+                "cargo::rustc-link-arg=-Wl,-rpath,$ORIGIN/../lib/revng/analyses",
             ]
         );
     }

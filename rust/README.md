@@ -95,7 +95,8 @@ Direct dependants of `revng-sys` may rely on its `DEP_REVNG_SDK`,
 `DEP_REVNG_LLVM`, and `DEP_REVNG_LLVM_MAJOR` metadata inside their build
 scripts; everything else discovers through the environment variables.
 
-The supported targets are Linux x86-64 and experimental native macOS AArch64.
+The supported targets are Linux (x86-64, with AArch64 enabled but not yet
+validated) and experimental native macOS AArch64.
 macOS builds use revng's pinned LLVM 16 fork and libc++; the Rust story
 supports the callback and reference backends and excludes libtcg on both
 targets. See [`../docs/linux-sdk.md`](../docs/linux-sdk.md) and
@@ -104,3 +105,37 @@ hand (the developer flow the automatic provisioning replicates).
 
 `revng-fugue`'s pipeline tests must run single-threaded:
 `cargo test -- --test-threads=1`.
+
+## Building a runtime package
+
+The SDK is the build-time kit; a shipped binary needs only a small relocatable
+runtime tree. Build the consumer with `REVNG_BUILD_PORTABLE=1` so `revng-build`
+emits package-relative rpaths (`@loader_path/../lib` on macOS, `$ORIGIN/../lib`
+on Linux) in place of the absolute cache paths, then run `revng-package`:
+
+```sh
+REVNG_BUILD_PORTABLE=1 cargo build --release --bin revng-fugue
+cargo run --release --manifest-path ../revng-package/Cargo.toml -- \
+  --cache "${REVNG_BUILD_CACHE:-<platform cache>/revng-build}/<target>/<revng12>-<llvm12>" \
+  --binary target/release/revng-fugue \
+  --out ./package
+```
+
+The result is a self-contained tree resolved entirely by relative rpaths — no
+launcher, no environment, no SDK:
+
+```
+package/
+  bin/revng-fugue
+  lib/                  revng + LLVM + MLIR + clang dylibs, merged
+    revng/analyses/     analysis dylibs
+  share/revng/          pipelines, abi, headers, helper-list.csv
+```
+
+`./bin/revng-fugue` then runs from any location. On macOS the tree is a pure
+copy of the cache dylibs — the binary is born portable, nothing is edited, and
+the third-party `libarchive`/`zstd` stay homebrew references (a dev/test
+convenience). On Linux the tool additionally bundles the third-party chain,
+rewrites rpaths with `patchelf`, and strips the shipped libraries, producing an
+artefact that runs in a clean container. The natural production shape is a
+multi-stage docker build whose runtime stage copies only the package.
