@@ -21,6 +21,13 @@ boundaries.
 
 ## Host dependencies
 
+The fork's LLVM 16 and MLIR sources use C++20 features that require
+**clang ≥ 16** to compile — older clang rejects a C++20 reversed-operator
+ambiguity in MLIR (`BuiltinDialect.cpp`) as a hard error. Debian 12 (bookworm)
+ships clang **14**, which is too old; install `clang-16` or newer from
+apt.llvm.org there, and make it the default `clang`/`clang++`. Debian 13
+(trixie, clang 19) and recent Ubuntu ship a new-enough clang.
+
 Install the native build dependencies. Package names can differ on Linux
 distributions other than Debian and Ubuntu.
 
