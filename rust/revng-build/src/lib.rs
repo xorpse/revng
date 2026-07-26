@@ -250,7 +250,7 @@ impl Sdk {
         let llvm = canonicalise(llvm)?;
 
         let llvm_config = llvm.join("bin/llvm-config");
-        let compiler = Self::compiler_for(os, &llvm);
+        let compiler = Self::compiler_for(os);
         for path in [
             prefix.join("include/revng"),
             prefix.join("lib/revng/analyses"),
@@ -362,7 +362,7 @@ impl Sdk {
     }
 
     pub fn compiler(&self) -> PathBuf {
-        Self::compiler_for(self.os, &self.llvm)
+        Self::compiler_for(self.os)
     }
 
     pub fn configure_linkage(&self) {
@@ -386,9 +386,9 @@ impl Sdk {
         }
     }
 
-    fn compiler_for(os: Os, llvm: &Path) -> PathBuf {
+    fn compiler_for(os: Os) -> PathBuf {
         match os {
-            Os::Linux => llvm.join("bin/clang++"),
+            Os::Linux => system_clang(),
             Os::MacOs => PathBuf::from("/usr/bin/clang++"),
         }
     }
@@ -527,6 +527,16 @@ impl Sdk {
             format!("{origin}/../lib/revng/analyses"),
         ]
     }
+}
+
+fn system_clang() -> PathBuf {
+    env::var_os("PATH")
+        .and_then(|path| {
+            env::split_paths(&path)
+                .map(|directory| directory.join("clang++"))
+                .find(|candidate| candidate.is_file())
+        })
+        .unwrap_or_else(|| PathBuf::from("clang++"))
 }
 
 #[cfg(test)]

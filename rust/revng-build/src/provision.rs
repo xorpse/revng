@@ -2,6 +2,7 @@ use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::fs::{self, File};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -13,13 +14,14 @@ use crate::{DEPENDENCIES, Dependency, Error, Os};
 
 const REVNG: Source = Source {
     repository: "xorpse/revng",
-    commit: "10f1d48282c1a390e307377714dee89dbfdfae01",
+    commit: "3d92da24362a94cbb6ab963cd1be6d717c3828d8",
 };
 const LLVM: Source = Source {
     repository: "revng/llvm-project",
     commit: "c9bb030b3d3baca5b21a8694e7207da713cdf6bb",
 };
 const MIN_CLANG_MAJOR: u32 = 16;
+const MIN_LIBCXX_VERSION: u32 = 170000;
 const PYTHON_REQUIREMENTS: [&str; 5] = [
     "black==26.5.1",
     "jinja2==3.1.6",
@@ -230,15 +232,8 @@ impl Cache {
         let expect_compiler = |tool: &str| {
             bootstrap_compiler(os, tool).expect("bootstrap compiler validated during preflight")
         };
-        let bootstrap_c = expect_compiler("clang");
-        let bootstrap_cxx = expect_compiler("clang++");
-        let (compiler_c, compiler_cxx) = match os {
-            Os::Linux => (
-                llvm_prefix.join("bin/clang"),
-                llvm_prefix.join("bin/clang++"),
-            ),
-            Os::MacOs => (bootstrap_c.clone(), bootstrap_cxx.clone()),
-        };
+        let compiler_c = expect_compiler("clang");
+        let compiler_cxx = expect_compiler("clang++");
 
         let cmake_common = |step: Step| {
             let step = step
@@ -261,8 +256,8 @@ impl Cache {
                 .arg("-G")
                 .arg("Ninja")
                 .define("CMAKE_INSTALL_PREFIX", &llvm_prefix)
-                .define("CMAKE_C_COMPILER", &bootstrap_c)
-                .define("CMAKE_CXX_COMPILER", &bootstrap_cxx)
+                .define("CMAKE_C_COMPILER", &compiler_c)
+                .define("CMAKE_CXX_COMPILER", &compiler_cxx)
                 .define("LLVM_ENABLE_PROJECTS", "clang;mlir")
                 .define("LLVM_TARGETS_TO_BUILD", "AArch64;ARM;Mips;SystemZ;X86")
                 .define("BUILD_SHARED_LIBS", "ON")
@@ -280,7 +275,6 @@ impl Cache {
             configure_llvm = configure_llvm
                 .define("LLVM_ENABLE_LIBCXX", "ON")
                 .define("CLANG_DEFAULT_CXX_STDLIB", "libc++")
-                .define("LLVM_ENABLE_RUNTIMES", "libcxx;libcxxabi;libunwind")
                 .define("LLVM_ENABLE_TERMINFO", "OFF")
                 .define("LLVM_ENABLE_Z3_SOLVER", "OFF");
         }
@@ -321,7 +315,7 @@ impl Cache {
             pip_install = pip_install.arg(requirement);
         }
 
-        let mut steps = vec![
+        vec![
             Step::new("venv", "python3")
                 .arg("-m")
                 .arg("venv")
@@ -335,36 +329,15 @@ impl Cache {
             Step::new("install-llvm", "cmake")
                 .arg("--install")
                 .arg(scratch.join("llvm-build")),
-        ];
-        if os == Os::Linux {
-            steps.push(
-                Step::new("install-sanitizer-headers", "cmake")
-                    .arg("-E")
-                    .arg("copy_directory")
-                    .arg(
-                        scratch
-                            .join(LLVM.directory())
-                            .join("compiler-rt/include/sanitizer"),
-                    )
-                    .arg(
-                        llvm_prefix
-                            .join(format!("lib/clang/{}/include/sanitizer", crate::LLVM_MAJOR)),
-                    ),
-            );
-        }
-        steps.push(configure_revng);
-        steps.push(
+            configure_revng,
             Step::new("build-revng", "cmake")
                 .arg("--build")
                 .arg(scratch.join("revng-build"))
                 .arg("--parallel"),
-        );
-        steps.push(
             Step::new("install-revng", "cmake")
                 .arg("--install")
                 .arg(scratch.join("revng-build")),
-        );
-        steps
+        ]
     }
 }
 
@@ -433,6 +406,16 @@ fn preflight(os: Os) -> Result<(), Error> {
                 brew: None,
                 apt: Some("apt-get install libc++-dev libc++abi-dev"),
             });
+        } else if let Some(compiler) = compiler.as_deref()
+            && libcxx_version(compiler).is_some_and(|version| version < MIN_LIBCXX_VERSION)
+        {
+            missing.push(Prerequisite {
+                name: "libc++ >= 17",
+                brew: None,
+                apt: Some(
+                    "libc++ 16 hard-errors on the cxx crate's C++20 concept checks; install a newer clang/libc++ (see apt.llvm.org)",
+                ),
+            });
         }
         if !Path::new("/usr/include/sqlite3.h").exists() {
             missing.push(Prerequisite {
@@ -500,6 +483,28 @@ fn clang_major(compiler: &Path) -> Option<u32> {
     version.trim().split('.').next()?.parse::<u32>().ok()
 }
 
+fn libcxx_version(compiler: &Path) -> Option<u32> {
+    let mut child = Command::new(compiler)
+        .args(["-stdlib=libc++", "-x", "c++", "-dM", "-E", "-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    child
+        .stdin
+        .take()?
+        .write_all(b"#include <version>\n")
+        .ok()?;
+    let output = child.wait_with_output().ok()?;
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("#define _LIBCPP_VERSION "))?
+        .trim()
+        .parse()
+        .ok()
+}
+
 fn dependency_prefixes(os: Os) -> Result<Vec<PathBuf>, Error> {
     if os == Os::Linux {
         return Ok(Vec::new());
@@ -556,9 +561,17 @@ impl Step {
             }
             env::join_paths(entries).expect("PATH entries are valid")
         };
+        let library_path = {
+            let mut entries = vec![cache.llvm().join("lib")];
+            if let Some(existing) = env::var_os("LD_LIBRARY_PATH") {
+                entries.extend(env::split_paths(&existing));
+            }
+            env::join_paths(entries).expect("library path entries are valid")
+        };
         let status = Command::new(&self.program)
             .args(&self.args)
             .env("PATH", path)
+            .env("LD_LIBRARY_PATH", library_path)
             .stdin(Stdio::null())
             .stdout(open_log()?)
             .stderr(open_log()?)
@@ -598,7 +611,7 @@ mod test {
     fn cache_key_is_deterministic() {
         assert_eq!(
             key_path(Path::new("/cache"), "aarch64-apple-darwin"),
-            PathBuf::from("/cache/aarch64-apple-darwin/10f1d48282c1-c9bb030b3d3b")
+            PathBuf::from("/cache/aarch64-apple-darwin/3d92da24362a-c9bb030b3d3b")
         );
     }
 
@@ -610,30 +623,16 @@ mod test {
         for os in [Os::Linux, Os::MacOs] {
             let steps = cache.steps(os, &[]);
             let names = steps.iter().map(|step| step.name).collect::<Vec<_>>();
-            let expected: &[&str] = if os == Os::Linux {
-                &[
-                    "venv",
-                    "python-requirements",
-                    "configure-llvm",
-                    "build-llvm",
-                    "install-llvm",
-                    "install-sanitizer-headers",
-                    "configure-revng",
-                    "build-revng",
-                    "install-revng",
-                ]
-            } else {
-                &[
-                    "venv",
-                    "python-requirements",
-                    "configure-llvm",
-                    "build-llvm",
-                    "install-llvm",
-                    "configure-revng",
-                    "build-revng",
-                    "install-revng",
-                ]
-            };
+            let expected: &[&str] = &[
+                "venv",
+                "python-requirements",
+                "configure-llvm",
+                "build-llvm",
+                "install-llvm",
+                "configure-revng",
+                "build-revng",
+                "install-revng",
+            ];
             assert_eq!(names, expected);
             let step_args = |name| {
                 argument_string(
@@ -656,10 +655,8 @@ mod test {
             match os {
                 Os::Linux => {
                     assert!(llvm.contains("-DLLVM_ENABLE_LIBCXX=ON"));
-                    assert!(llvm.contains("-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi;libunwind"));
-                    assert!(
-                        revng.contains("-DCMAKE_CXX_COMPILER=/cache/target/key/llvm/bin/clang++")
-                    );
+                    assert!(!llvm.contains("-nostdinc++"));
+                    assert!(!revng.contains("/cache/target/key/llvm/bin/clang++"));
                     assert!(!llvm.contains("-DCMAKE_OSX_ARCHITECTURES=arm64"));
                 }
                 Os::MacOs => {
