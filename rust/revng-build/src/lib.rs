@@ -503,6 +503,7 @@ impl Sdk {
             });
         }
         if self.os == Os::Linux {
+            directives.push("cargo::rustc-link-arg=-Wl,--allow-shlib-undefined".to_owned());
             directives.push("cargo::rustc-link-arg=-Wl,--disable-new-dtags".to_owned());
         }
         for path in &self.link_files {
@@ -716,6 +717,7 @@ mod test {
                 ),
                 &format!("cargo::rustc-link-arg={root}/sdk/lib/librevngValueMaterializer.so"),
                 &format!("cargo::rustc-link-arg={root}/sdk/lib/revng/analyses/librevngA.so"),
+                &"cargo::rustc-link-arg=-Wl,--allow-shlib-undefined".to_owned(),
                 &"cargo::rustc-link-arg=-Wl,--disable-new-dtags".to_owned(),
                 &format!("cargo::rustc-link-arg={root}/runtime/libc++.so"),
                 &format!("cargo::rustc-link-arg={root}/runtime/libc++abi.so"),

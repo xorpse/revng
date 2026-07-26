@@ -10,7 +10,7 @@ use crate::error::Error;
 use crate::inspect;
 
 const LIBRARY_RUNPATH: &str = "$ORIGIN:$ORIGIN/revng/analyses";
-const ANALYSIS_RUNPATH: &str = "$ORIGIN:$ORIGIN/..";
+const ANALYSIS_RUNPATH: &str = "$ORIGIN:$ORIGIN/../..";
 const BUNDLED_RUNPATH: &str = "$ORIGIN";
 
 const LINUX_SYSTEM_LIBRARIES: [&str; 9] = [

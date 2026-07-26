@@ -14,7 +14,7 @@ use crate::{DEPENDENCIES, Dependency, Error, Os};
 
 const REVNG: Source = Source {
     repository: "xorpse/revng",
-    commit: "6cd407341273268d74674cc86c9eeb285e93b542",
+    commit: "50f6a9d1db4e42f7a76f8c132779dd3ca2874001",
 };
 const LLVM: Source = Source {
     repository: "revng/llvm-project",
@@ -617,7 +617,7 @@ mod test {
     fn cache_key_is_deterministic() {
         assert_eq!(
             key_path(Path::new("/cache"), "aarch64-apple-darwin"),
-            PathBuf::from("/cache/aarch64-apple-darwin/6cd407341273-c9bb030b3d3b")
+            PathBuf::from("/cache/aarch64-apple-darwin/50f6a9d1db4e-c9bb030b3d3b")
         );
     }
 
