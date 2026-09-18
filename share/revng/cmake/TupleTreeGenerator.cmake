@@ -152,13 +152,13 @@ function(tuple_tree_generator_compute_generated_cpp_files SCHEMA_PATH
     PROPERTY CMAKE_CONFIGURE_DEPENDS "${SCHEMA_PATH}")
   execute_process(
     COMMAND
-      python3 "${SCRIPTS_ROOT_DIR}/tuple-tree-generate-cpp-paths.py"
+      "${Python3_EXECUTABLE}" "${SCRIPTS_ROOT_DIR}/tuple-tree-generate-cpp-paths.py"
       "--forward-decls" "--early" "--late" "${SCHEMA_PATH}" "${HEADERS_DIR}"
     COMMAND "tr" "\n" ";"
     OUTPUT_VARIABLE LOCAL_GENERATED_HEADERS_VARIABLE COMMAND_ERROR_IS_FATAL ANY)
 
   execute_process(
-    COMMAND python3 "${SCRIPTS_ROOT_DIR}/tuple-tree-generate-cpp-paths.py"
+    COMMAND "${Python3_EXECUTABLE}" "${SCRIPTS_ROOT_DIR}/tuple-tree-generate-cpp-paths.py"
             "--impl" "${SCHEMA_PATH}" "${HEADERS_DIR}"
     COMMAND "tr" "\n" ";"
     OUTPUT_VARIABLE LOCAL_GENERATED_IMPLS_VARIABLE COMMAND_ERROR_IS_FATAL ANY)
@@ -225,7 +225,7 @@ function(
 
   add_custom_command(
     COMMAND
-      python3 "${SCRIPTS_ROOT_DIR}/tuple-tree-generate.py" docs
+      "${Python3_EXECUTABLE}" "${SCRIPTS_ROOT_DIR}/tuple-tree-generate.py" docs
       ${SCALAR_TYPE_ARGS} "${YAML_DEFINITIONS}" >
       "${EXPECTED_GENERATED_MARKDOWN}"
     OUTPUT "${EXPECTED_GENERATED_MARKDOWN}"
@@ -274,7 +274,7 @@ function(
 
   add_custom_command(
     COMMAND
-      python3 "${SCRIPTS_ROOT_DIR}/tuple-tree-generate.py" cpp --namespace
+      "${Python3_EXECUTABLE}" "${SCRIPTS_ROOT_DIR}/tuple-tree-generate.py" cpp --namespace
       "${NAMESPACE}" --include-path-prefix "${INCLUDE_PATH_PREFIX}"
       ${STRING_TYPE_ARGS} ${SCALAR_TYPE_ARGS} "${YAML_DEFINITIONS}"
       "${OUTPUT_DIR}" ${TRACKING} ${TRACKING_DEBUG}
@@ -311,7 +311,7 @@ function(
 
   add_custom_command(
     COMMAND
-      python3 "${SCRIPTS_ROOT_DIR}/tuple-tree-generate.py" jsonschema --output
+      "${Python3_EXECUTABLE}" "${SCRIPTS_ROOT_DIR}/tuple-tree-generate.py" jsonschema --output
       "${OUTPUT_PATH}" ${STRING_TYPE_ARGS} ${SEPARATE_STRING_TYPE_ARGS}
       ${SCALAR_TYPE_ARGS} "${YAML_DEFINITIONS}"
     OUTPUT "${OUTPUT_PATH}"
@@ -359,7 +359,7 @@ function(
 
   add_custom_command(
     COMMAND
-      python3 "${SCRIPTS_ROOT_DIR}/tuple-tree-generate.py" typescript --output
+      "${Python3_EXECUTABLE}" "${SCRIPTS_ROOT_DIR}/tuple-tree-generate.py" typescript --output
       "${OUTPUT_PATH}" --global-name "${GLOBAL_NAME}" ${INCLUDE_FILE_ARGS}
       ${STRING_TYPE_ARGS} ${EXTERNAL_TYPE_ARGS} ${SCALAR_TYPE_ARGS}
       "${YAML_DEFINITIONS}"
@@ -407,7 +407,7 @@ function(
 
   add_custom_command(
     COMMAND
-      python3 "${SCRIPTS_ROOT_DIR}/tuple-tree-generate.py" python --output
+      "${Python3_EXECUTABLE}" "${SCRIPTS_ROOT_DIR}/tuple-tree-generate.py" python --output
       "${OUTPUT_PATH}" ${PYTHON_MIXINS_ARGS} ${STRING_TYPE_ARGS}
       ${EXTERNAL_TYPE_ARGS} ${SCALAR_TYPE_ARGS} "${YAML_DEFINITIONS}"
     OUTPUT "${OUTPUT_PATH}"

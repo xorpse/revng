@@ -1,0 +1,36 @@
+#pragma once
+
+//
+// This file is distributed under the MIT License. See LICENSE.md for details.
+//
+
+// NOLINTBEGIN
+
+typedef struct rp_manager rp_manager;
+typedef struct rp_binary_view rp_binary_view;
+typedef struct rp_address_space_callbacks rp_address_space_callbacks;
+typedef struct rp_lifter_callbacks rp_lifter_callbacks;
+typedef struct rp_llvm_module_callbacks rp_llvm_module_callbacks;
+typedef struct rp_mlir_module_callbacks rp_mlir_module_callbacks;
+typedef struct rp_type rp_type;
+typedef struct rp_typed_argument rp_typed_argument;
+typedef struct rp_named_typed_register rp_named_typed_register;
+typedef struct rp_file_address_space_mapping rp_file_address_space_mapping;
+typedef struct rp_kind rp_kind;
+typedef struct rp_step rp_step;
+typedef struct rp_container rp_container;
+typedef struct rp_container_identifier rp_container_identifier;
+typedef struct rp_target rp_target;
+typedef struct rp_targets_list rp_targets_list;
+typedef struct rp_diff_map rp_diff_map;
+typedef struct rp_error rp_error;
+typedef struct rp_document_error rp_document_error;
+typedef struct rp_simple_error rp_simple_error;
+typedef struct rp_string_map rp_string_map;
+typedef struct rp_invalidations rp_invalidations;
+typedef struct rp_buffer rp_buffer;
+typedef struct rp_container_targets_map rp_container_targets_map;
+typedef struct rp_primitive_type rp_primitive_type;
+typedef struct rp_cabi_argument rp_cabi_argument;
+
+// NOLINTEND

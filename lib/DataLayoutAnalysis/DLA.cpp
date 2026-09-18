@@ -5,6 +5,8 @@
 #include <ranges>
 #include <set>
 
+#include "llvm/Support/Progress.h"
+
 #include "revng/DataLayoutAnalysis/DLA.h"
 #include "revng/DataLayoutAnalysis/DLALayouts.h"
 

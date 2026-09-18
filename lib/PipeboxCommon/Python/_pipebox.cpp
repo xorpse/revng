@@ -20,10 +20,12 @@
 #include "revng/PipeboxCommon/Model.h"
 #include "revng/Support/InitRevng.h"
 
-static std::map<int, sighandler_t> SavedSignals;
+// `sighandler_t`, which this replaces, is a glibc extension.
+using SignalHandlerPointer = void (*)(int);
+static std::map<int, SignalHandlerPointer> SavedSignals;
 
 static void handleSignal(int SigNo) {
-  const sighandler_t &Handler = SavedSignals[SigNo];
+  const SignalHandlerPointer &Handler = SavedSignals[SigNo];
 
   {
     // re-acquire the GIL since the signal might have been received while a pipe
@@ -111,10 +113,10 @@ NB_MODULE(_pipebox, m) {
     revng_assert(not nanobind::hasattr(m, "__init_revng__"));
 
     // This map stores the SIG_DFL and SIG_IGN for later
-    std::map<int, sighandler_t> IgnoredOrDefaultSignals;
+    std::map<int, SignalHandlerPointer> IgnoredOrDefaultSignals;
     // Save the signal pointers for later
     for (int SigNumber : Signals) {
-      sighandler_t Handler = signal(SigNumber, SIG_DFL);
+      SignalHandlerPointer Handler = signal(SigNumber, SIG_DFL);
       if (Handler == SIG_DFL or Handler == SIG_IGN)
         IgnoredOrDefaultSignals[SigNumber] = Handler;
       else if (Handler != SIG_ERR)

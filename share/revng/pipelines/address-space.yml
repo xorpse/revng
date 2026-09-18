@@ -1,0 +1,37 @@
+#
+# A lift-only pipeline, used by the C API tests and the installed-SDK examples.
+#
+# Deliberately minimal: it exists to exercise the embedding path -- a host
+# describing an address space and supplying its own backend -- rather than to
+# decompile anything, so it stops at the first savepoint and pulls in none of
+# the analysis or C-emission machinery.
+#
+artifact-categories:
+  - name: debug
+    show-by-default: false
+
+containers:
+  - name: binaries-container
+    type: BinariesContainer
+  - name: llvm-root
+    type: LLVMRootContainer
+
+branches:
+  lift:
+    tasks:
+      - pipe: import-files
+        arguments: [binaries-container]
+        analyses:
+          - analysis: parse-binary
+            description: Import what the binary itself declares.
+            containers: [binaries-container]
+      - pipe: lift
+        arguments: [binaries-container, llvm-root]
+      - savepoint: lifted
+        containers: [llvm-root]
+        artifacts:
+          - name: lift
+            description: The root function produced by lifting.
+            container: llvm-root
+            category: debug
+            filename: lifted.bc

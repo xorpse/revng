@@ -1,0 +1,67 @@
+#
+# This file is distributed under the MIT License. See LICENSE.md for details.
+#
+
+include(CMakeFindDependencyMacro)
+
+# Where these were found when revng was built. A consumer that keeps them
+# somewhere else sets the variable itself before `find_package(revng)`; these
+# only supply the default, so nothing here overrides a caller's choice. Without
+# them the consumer would have to rediscover a keg-only libarchive and the
+# exact LLVM this was compiled against, which it has no way to guess.
+if(NOT LLVM_DIR)
+  set(LLVM_DIR "@LLVM_DIR@")
+endif()
+if(NOT MLIR_DIR)
+  set(MLIR_DIR "@MLIR_DIR@")
+endif()
+if(NOT Clang_DIR)
+  set(Clang_DIR "@Clang_DIR@")
+endif()
+if(NOT LibArchive_INCLUDE_DIR)
+  set(LibArchive_INCLUDE_DIR "@LibArchive_INCLUDE_DIR@")
+endif()
+if(NOT LibArchive_LIBRARY)
+  set(LibArchive_LIBRARY "@LibArchive_LIBRARY@")
+endif()
+
+# The exported targets carry these in their interface, so a consumer that only
+# does `find_package(revng)` has to get them from here rather than repeating
+# them.
+find_dependency(LLVM CONFIG)
+# The exported targets name MLIR and clang libraries too -- `revngClift` and
+# `revngClangToModel` are in the link closure of `revngPipelineC` -- so a
+# consumer that only found LLVM would fall through to `-lMLIRIR` and friends.
+find_dependency(MLIR CONFIG)
+find_dependency(Clang CONFIG)
+find_dependency(LibArchive)
+
+# `revngSupport` links zstd by bare name. Nothing defines a target of that name
+# -- LLVM's own find module exports `zstd::libzstd_shared` -- so a consumer
+# would fall through to `-lzstd` and miss a Homebrew prefix that is not on the
+# default linker path.
+if(NOT TARGET zstd)
+  add_library(zstd UNKNOWN IMPORTED)
+  set_target_properties(zstd PROPERTIES IMPORTED_LOCATION "@zstd_LIBRARY@")
+endif()
+
+get_filename_component(revng_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+include("${revng_CMAKE_DIR}/revng.cmake")
+include("${revng_CMAKE_DIR}/Common.cmake")
+
+# revng's headers include LLVM's, but the include directories are not part of
+# the exported interface, so add them to whichever targets this build shipped.
+foreach(
+  REVNG_EXPORTED_TARGET
+  revngSupport
+  revngModel
+  revngLift
+  revngLiftReference
+  revngLoader)
+  if(TARGET ${REVNG_EXPORTED_TARGET})
+    set_property(
+      TARGET ${REVNG_EXPORTED_TARGET}
+      APPEND
+      PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${LLVM_INCLUDE_DIRS}")
+  endif()
+endforeach()

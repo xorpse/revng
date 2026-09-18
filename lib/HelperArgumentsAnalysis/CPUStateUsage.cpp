@@ -11,6 +11,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/ModuleSlotTracker.h"
+#include "llvm/Support/Progress.h"
 
 #include "revng/ADT/RecursiveCoroutine.h"
 #include "revng/HelperArgumentsAnalysis/Annotation.h"

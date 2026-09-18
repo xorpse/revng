@@ -136,8 +136,8 @@ private:
 
   std::map<BasicBlockID, std::unordered_map<MetaAddress, InstructionPrefix>>
     Prefixes;
-  uint64_t LongestAddressString = 0;
-  uint64_t LongestByteString = 0;
+  size_t LongestAddressString = 0;
+  size_t LongestByteString = 0;
 
 public:
   InstructionPrefixManager() {}

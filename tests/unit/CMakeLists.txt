@@ -6,6 +6,12 @@ cmake_policy(SET CMP0060 NEW)
 
 set(SRC "${CMAKE_SOURCE_DIR}/tests/unit")
 
+# Several tests drive a real pipeline. Name the two descriptions here so the
+# tests take a path rather than reconstructing one from the source layout.
+set(REVNG_MAIN_PIPELINE "${CMAKE_SOURCE_DIR}/python/revng/internal/pipeline.yml")
+set(REVNG_ADDRESS_SPACE_PIPELINE
+    "${CMAKE_SOURCE_DIR}/share/revng/pipelines/address-space.yml")
+
 find_package(Boost REQUIRED COMPONENTS unit_test_framework)
 
 #
@@ -398,59 +404,63 @@ target_link_libraries(test_adt revngSupport revngUnitTestHelpers
 revng_add_test(NAME test_adt COMMAND test_adt)
 set_tests_properties(test_adt PROPERTIES LABELS "unit")
 
-#
-# test_type_shrinking
-#
-revng_add_test(
-  NAME
-  test_type_shrinking
-  COMMAND
-  bash
-  -c
-  "${CMAKE_BINARY_DIR}/bin/revng opt -S -early-type-shrinking -type-shrinking -instcombine ${SRC}/TypeShrinking.ll | FileCheck ${SRC}/TypeShrinking.ll"
-)
+# These four drive `bin/revng` and `FileCheck` rather than linking against a
+# library, so they need the driver, which an SDK build does not produce.
+if(NOT REVNG_SDK_BUILD)
+  #
+  # test_type_shrinking
+  #
+  revng_add_test(
+    NAME
+    test_type_shrinking
+    COMMAND
+    bash
+    -c
+    "${CMAKE_BINARY_DIR}/bin/revng opt -S -early-type-shrinking -type-shrinking -instcombine ${SRC}/TypeShrinking.ll | FileCheck ${SRC}/TypeShrinking.ll"
+  )
 
-#
-# Check narrowing after the final instcombine as well as before it.
-#
-revng_add_test(
-  NAME
-  test_type_shrinking_final
-  COMMAND
-  bash
-  -o
-  pipefail
-  -c
-  "${CMAKE_BINARY_DIR}/bin/revng opt -S -early-type-shrinking -type-shrinking -instcombine -early-type-shrinking -type-shrinking -early-cse -dce -verify ${SRC}/TypeShrinking.ll | FileCheck ${SRC}/TypeShrinking.ll"
-)
+  #
+  # Check narrowing after the final instcombine as well as before it.
+  #
+  revng_add_test(
+    NAME
+    test_type_shrinking_final
+    COMMAND
+    bash
+    -o
+    pipefail
+    -c
+    "${CMAKE_BINARY_DIR}/bin/revng opt -S -early-type-shrinking -type-shrinking -instcombine -early-type-shrinking -type-shrinking -early-cse -dce -verify ${SRC}/TypeShrinking.ll | FileCheck ${SRC}/TypeShrinking.ll"
+  )
 
-# Test comparisons and shifts without instcombine, which could hide missing
-# rewrites or invalid narrowing.
-revng_add_test(
-  NAME
-  test_type_shrinking_direct
-  COMMAND
-  bash
-  -o
-  pipefail
-  -c
-  "${CMAKE_BINARY_DIR}/bin/revng opt -S -type-shrinking -verify ${SRC}/TypeShrinking.ll | FileCheck --check-prefix=DIRECT ${SRC}/TypeShrinking.ll"
-)
+  # Test comparisons and shifts without instcombine, which could hide missing
+  # rewrites or invalid narrowing.
+  revng_add_test(
+    NAME
+    test_type_shrinking_direct
+    COMMAND
+    bash
+    -o
+    pipefail
+    -c
+    "${CMAKE_BINARY_DIR}/bin/revng opt -S -type-shrinking -verify ${SRC}/TypeShrinking.ll | FileCheck --check-prefix=DIRECT ${SRC}/TypeShrinking.ll"
+  )
 
-#
-# test_early_type_shrinking
-#
-# On its own: instcombine rewrites `sext(trunc x)` straight back into the shift
-# pair this pass replaces it with.
-#
-revng_add_test(
-  NAME
-  test_early_type_shrinking
-  COMMAND
-  bash
-  -c
-  "${CMAKE_BINARY_DIR}/bin/revng opt -S -early-type-shrinking ${SRC}/EarlyTypeShrinking.ll | FileCheck ${SRC}/EarlyTypeShrinking.ll"
-)
+  #
+  # test_early_type_shrinking
+  #
+  # On its own: instcombine rewrites `sext(trunc x)` straight back into the shift
+  # pair this pass replaces it with.
+  #
+  revng_add_test(
+    NAME
+    test_early_type_shrinking
+    COMMAND
+    bash
+    -c
+    "${CMAKE_BINARY_DIR}/bin/revng opt -S -early-type-shrinking ${SRC}/EarlyTypeShrinking.ll | FileCheck ${SRC}/EarlyTypeShrinking.ll"
+  )
+endif()
 
 #
 # test_mfp
@@ -581,3 +591,184 @@ target_link_libraries(
   test_type_refinement revngCliftTransforms revngUnitTestHelpers
   Boost::unit_test_framework ${LLVM_LIBRARIES})
 add_test(NAME test_type_refinement COMMAND test_type_refinement)
+
+#
+# test_addressspaceloader
+#
+
+revng_add_test_executable(test_addressspaceloader
+                          "${SRC}/AddressSpaceLoader.cpp")
+target_compile_definitions(test_addressspaceloader
+                           PRIVATE "BOOST_TEST_DYN_LINK=1")
+target_link_libraries(test_addressspaceloader revngLoader revngUnitTestHelpers
+                      Boost::unit_test_framework ${LLVM_LIBRARIES})
+revng_add_test(NAME test_addressspaceloader COMMAND test_addressspaceloader)
+set_tests_properties(test_addressspaceloader PROPERTIES LABELS "unit")
+
+#
+# test_lifterregistry
+#
+
+revng_add_test_executable(test_lifterregistry "${SRC}/LifterRegistry.cpp")
+target_compile_definitions(test_lifterregistry PRIVATE "BOOST_TEST_DYN_LINK=1")
+if(NOT REVNG_BACKEND_LIBTCG)
+  target_compile_definitions(test_lifterregistry PRIVATE REVNG_TEST_NO_LIBTCG=1)
+endif()
+target_link_libraries(test_lifterregistry revngLift revngUnitTestHelpers
+                      Boost::unit_test_framework ${LLVM_LIBRARIES})
+revng_add_test(NAME test_lifterregistry COMMAND test_lifterregistry)
+set_tests_properties(test_lifterregistry PROPERTIES LABELS "unit")
+
+#
+# test_referencelifter
+#
+
+revng_add_test_executable(test_referencelifter "${SRC}/ReferenceLifter.cpp")
+target_compile_definitions(test_referencelifter PRIVATE "BOOST_TEST_DYN_LINK=1")
+# The backend registers itself from a static initialiser, so nothing in the
+# test refers to a symbol in it.
+revng_retain_dso(test_referencelifter revngLiftReference)
+target_link_libraries(
+  test_referencelifter
+  revngLiftReference
+  revngLoader
+  revngInlineHelpers
+  revngUnitTestHelpers
+  Boost::unit_test_framework
+  ${LLVM_LIBRARIES})
+revng_add_test(NAME test_referencelifter COMMAND test_referencelifter)
+set_tests_properties(test_referencelifter PROPERTIES LABELS "unit")
+
+#
+# test_piperegistry
+#
+
+revng_add_test_executable(test_piperegistry "${SRC}/PipeRegistry.cpp")
+target_compile_definitions(test_piperegistry PRIVATE "BOOST_TEST_DYN_LINK=1")
+# Nothing here references a symbol in `revngPipebox`; it registers from static
+# initialisers, so the linker has to be told to keep it.
+revng_retain_dso(test_piperegistry revngPipebox)
+target_link_libraries(test_piperegistry revngPipebox revngUnitTestHelpers
+                      Boost::unit_test_framework ${LLVM_LIBRARIES})
+revng_add_test(NAME test_piperegistry COMMAND test_piperegistry)
+set_tests_properties(test_piperegistry PROPERTIES LABELS "unit")
+
+#
+# test_pipelinedescription
+#
+
+revng_add_test_executable(test_pipelinedescription
+                          "${SRC}/PipelineDescription.cpp")
+target_compile_definitions(
+  test_pipelinedescription
+  PRIVATE
+    "BOOST_TEST_DYN_LINK=1"
+    "REVNG_PIPELINE_PATH=\"${CMAKE_SOURCE_DIR}/python/revng/internal/pipeline.yml\""
+    "REVNG_ADDRESS_SPACE_PIPELINE=\"${REVNG_ADDRESS_SPACE_PIPELINE}\""
+)
+revng_retain_dso(test_pipelinedescription revngPipebox)
+revng_retain_dso(test_pipelinedescription revngRunner)
+target_link_libraries(test_pipelinedescription revngRunner revngPipebox
+                      revngUnitTestHelpers Boost::unit_test_framework
+                      ${LLVM_LIBRARIES})
+revng_add_test(NAME test_pipelinedescription COMMAND test_pipelinedescription)
+set_tests_properties(test_pipelinedescription PROPERTIES LABELS "unit")
+
+#
+# test_runner
+#
+
+revng_add_test_executable(test_runner "${SRC}/Runner.cpp")
+target_compile_definitions(
+  test_runner
+  PRIVATE
+    "BOOST_TEST_DYN_LINK=1"
+    "REVNG_PIPELINE_PATH=\"${CMAKE_SOURCE_DIR}/python/revng/internal/pipeline.yml\""
+)
+# Both the pipes and the reference backend register from static initialisers.
+revng_retain_dso(test_runner revngPipebox)
+revng_retain_dso(test_runner revngLiftReference)
+target_link_libraries(
+  test_runner
+  revngRunner
+  revngPipebox
+  revngLiftReference
+  revngLoader
+  revngUnitTestHelpers
+  Boost::unit_test_framework
+  ${LLVM_LIBRARIES})
+revng_add_test(NAME test_runner COMMAND test_runner)
+set_tests_properties(test_runner PROPERTIES LABELS "unit")
+
+#
+# test_pipelinec_addressspace
+#
+
+revng_add_test_executable(test_pipelinec_addressspace
+                          "${SRC}/PipelineCAddressSpace.cpp")
+target_compile_definitions(
+  test_pipelinec_addressspace
+  PRIVATE "BOOST_TEST_DYN_LINK=1"
+          "REVNG_ADDRESS_SPACE_PIPELINE=\"${REVNG_ADDRESS_SPACE_PIPELINE}\"")
+revng_retain_dso(test_pipelinec_addressspace revngLiftReference)
+target_link_libraries(
+  test_pipelinec_addressspace revngPipelineC revngLiftReference
+  revngUnitTestHelpers Boost::unit_test_framework ${LLVM_LIBRARIES})
+revng_add_test(NAME test_pipelinec_addressspace COMMAND
+               test_pipelinec_addressspace)
+set_tests_properties(test_pipelinec_addressspace PROPERTIES LABELS "unit")
+
+#
+# test_reference_end_to_end
+#
+
+revng_add_test_executable(test_reference_end_to_end
+                          "${SRC}/ReferenceEndToEnd.cpp")
+target_compile_definitions(
+  test_reference_end_to_end
+  PRIVATE "BOOST_TEST_DYN_LINK=1"
+          "REVNG_MAIN_PIPELINE=\"${REVNG_MAIN_PIPELINE}\"")
+revng_retain_dso(test_reference_end_to_end revngLiftReference)
+target_link_libraries(
+  test_reference_end_to_end revngPipelineC revngLiftReference
+  revngUnitTestHelpers Boost::unit_test_framework ${LLVM_LIBRARIES})
+revng_add_test(NAME test_reference_end_to_end COMMAND
+               test_reference_end_to_end)
+set_tests_properties(test_reference_end_to_end PROPERTIES LABELS "integration")
+
+#
+# The C examples, built as tests
+#
+# These are the only consumers that exercise the API as plain C, through the
+# same headers an out-of-tree user gets. `LINKER_LANGUAGE CXX` because the
+# implementation behind those headers is C++.
+#
+
+add_executable(test_lifter_library_c
+               "${CMAKE_SOURCE_DIR}/examples/lifter-library.c")
+set_target_properties(test_lifter_library_c PROPERTIES LINKER_LANGUAGE CXX)
+target_compile_definitions(
+  test_lifter_library_c
+  PRIVATE "REVNG_TEST_PIPELINE=\"${REVNG_ADDRESS_SPACE_PIPELINE}\"")
+revng_retain_dso(test_lifter_library_c revngLiftReference)
+target_link_libraries(test_lifter_library_c revngPipelineC revngLiftReference)
+revng_add_test(NAME test_lifter_library_c_reference COMMAND
+               test_lifter_library_c reference-x86_64)
+set_tests_properties(test_lifter_library_c_reference PROPERTIES LABELS
+                                                                "integration")
+
+add_executable(test_decompile_library_c
+               "${CMAKE_SOURCE_DIR}/examples/decompile-library.c")
+set_target_properties(test_decompile_library_c PROPERTIES LINKER_LANGUAGE CXX)
+target_compile_definitions(
+  test_decompile_library_c
+  PRIVATE
+    "REVNG_FULL_PIPELINE=\"${CMAKE_SOURCE_DIR}/python/revng/internal/pipeline.yml\""
+)
+revng_retain_dso(test_decompile_library_c revngLiftReference)
+target_link_libraries(test_decompile_library_c revngPipelineC
+                      revngLiftReference)
+revng_add_test(NAME test_decompile_library_c_reference COMMAND
+               test_decompile_library_c reference-x86_64)
+set_tests_properties(test_decompile_library_c_reference
+                     PROPERTIES LABELS "integration")

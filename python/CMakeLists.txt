@@ -126,7 +126,7 @@ function(python_wheel)
 
   add_custom_command(
     OUTPUT "${CMAKE_BINARY_DIR}/${WHEEL_OUTPUT_NAME}"
-    COMMAND python -m build --no-isolation --wheel --outdir
+    COMMAND "${Python3_EXECUTABLE}" -m build --no-isolation --wheel --outdir
             "${CMAKE_BINARY_DIR}" &> /dev/null
     DEPENDS
       "${CMAKE_BINARY_DIR}/build-wheel/${PYTHON_WHEEL_NAME}/pyproject.toml"
@@ -151,8 +151,15 @@ function(python_wheel)
   install(FILES "${CMAKE_BINARY_DIR}/${WHEEL_OUTPUT_NAME}"
           DESTINATION "${CMAKE_INSTALL_PREFIX}/share/python")
   install(
-    CODE "execute_process(COMMAND \"${CMAKE_CURRENT_SOURCE_DIR}/wheel-install.sh\" \
-\"${CMAKE_BINARY_DIR}/${WHEEL_OUTPUT_NAME}\")")
+    CODE "
+execute_process(
+  COMMAND \"${CMAKE_CURRENT_SOURCE_DIR}/wheel-install.sh\"
+\"${CMAKE_BINARY_DIR}/${WHEEL_OUTPUT_NAME}\" \"${CMAKE_INSTALL_PREFIX}\" \
+\"${Python3_EXECUTABLE}\" \"${PYTHON_INSTALL_PATH}\"
+  RESULT_VARIABLE REVNG_WHEEL_INSTALL_RESULT)
+if(NOT REVNG_WHEEL_INSTALL_RESULT EQUAL 0)
+  message(FATAL_ERROR \"Failed to install ${PYTHON_WHEEL_NAME} wheel\")
+endif()")
 endfunction()
 
 #
@@ -274,6 +281,7 @@ add_custom_command(
 
 add_custom_command(
   COMMAND
+    env "PYTHON=${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/scripts/jsonschema_to_py.sh"
     "${CMAKE_SOURCE_DIR}/python/revng/pypeline/pipeline-description-schema.yml"
     "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/pipeline_description.py"
@@ -534,10 +542,19 @@ set_target_properties(
              PREFIX ""
              LIBRARY_OUTPUT_DIRECTORY
              "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/internal")
+if(APPLE)
+  # Wheels retain the module's build rpath. Keep the revng portion relative so
+  # the installed Python package can be relocated with the rest of the SDK.
+  set_target_properties(
+    "${CPP_MODULE_NAME}"
+    PROPERTIES BUILD_RPATH
+               "@loader_path/../../../..;@loader_path/../../../../revng/analyses")
+endif()
 target_link_libraries(
-  "${CPP_MODULE_NAME}" PUBLIC ${Python3_LIBRARIES} ${LLVM_LIBRARIES} nanobind
-                              revngSupport revngModel)
+  "${CPP_MODULE_NAME}" PRIVATE ${Python3_LIBRARIES} ${LLVM_LIBRARIES} nanobind
+                               revngSupport revngModel)
 target_include_directories("${CPP_MODULE_NAME}" PUBLIC ${Python3_INCLUDE_DIRS})
+target_compile_features("${CPP_MODULE_NAME}" PRIVATE cxx_std_20)
 
 python_module(
   TARGET_NAME
@@ -557,3 +574,8 @@ python_wheel(NAME revng_internal PYPROJECT revng/internal/pyproject.toml README
              revng/internal/README.md)
 python_wheel(NAME pypeline PYPROJECT revng/pypeline/pyproject.toml README
              revng/pypeline/README.md)
+
+# setuptools rewrites script shebangs and installs the unconfigured source
+# script. Install the configured, relocatable launchers after all wheels.
+install(PROGRAMS "${CMAKE_BINARY_DIR}/bin/revng"
+                 "${CMAKE_BINARY_DIR}/bin/revng2" DESTINATION bin)

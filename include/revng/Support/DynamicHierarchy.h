@@ -38,8 +38,6 @@ private:
 
 public:
   DynamicHierarchy(llvm::StringRef Name) : Parent(nullptr), Name(Name.str()) {
-    revng_assert(not Initialized);
-
     getRoots().push_back(&self());
     getAll().push_back(&self());
 
@@ -47,16 +45,16 @@ public:
     // irrespective of load order
     llvm::sort(getRoots(), compareByName);
     llvm::sort(getAll(), compareByName);
+    Initialized.store(false);
   }
 
   DynamicHierarchy(llvm::StringRef Name, DynamicHierarchy &Parent) :
     Parent(&Parent), Name(Name.str()) {
-    revng_assert(not Initialized);
-
     getAll().push_back(&self());
 
     // NOTE: see constructor above
     llvm::sort(getAll(), compareByName);
+    Initialized.store(false);
   }
 
   DynamicHierarchy(DynamicHierarchy &&) = delete;
@@ -69,12 +67,17 @@ public:
 public:
   static void init() {
     bool ExpectedInitialized = false;
-    if (atomic_compare_exchange_weak(&Initialized,
-                                     &ExpectedInitialized,
-                                     true)) {
+    if (atomic_compare_exchange_strong(&Initialized,
+                                       &ExpectedInitialized,
+                                       true)) {
+      // New nodes can be registered by a dynamically loaded library after a
+      // hierarchy was first queried. Rebuild the cached tree and IDs in that
+      // case instead of leaving those nodes with uninitialized ranges.
+      for (DynamicHierarchy *Node : getAll())
+        Node->Children.clear();
       for (DynamicHierarchy *Root : getAll())
         Root->registerInParent();
-      static entry_t ID = -1;
+      entry_t ID = -1;
       for (DynamicHierarchy *Root : getRoots())
         ID = Root->assign(ID);
     }
@@ -122,7 +125,13 @@ public:
   bool isa(entry_t ID) const { return id() == ID; }
 
   bool ancestorOf(const DynamicHierarchy &MaybeChild) const {
-    return ancestorOf(MaybeChild.id());
+    const DynamicHierarchy *Current = &MaybeChild;
+    while (Current != nullptr) {
+      if (Current == this)
+        return true;
+      Current = Current->Parent;
+    }
+    return false;
   }
 
   bool ancestorOf(entry_t ID) const { return Start <= ID and ID < End; }

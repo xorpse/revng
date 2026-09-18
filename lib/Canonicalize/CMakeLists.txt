@@ -28,4 +28,5 @@ target_link_libraries(
   revngModel
   revngPTML
   revngLift
+  revngValueMaterializer
   ${LLVM_LIBRARIES})

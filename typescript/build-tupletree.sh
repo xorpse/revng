@@ -22,9 +22,15 @@ cp "$1/package-$3.json" package.json
 cp "$1/tsconfig.json" tsconfig.json
 cp "$1/tuple_tree.ts" tuple_tree.ts
 cp ../lib/typescript/"$3".ts .
-CHECKSUM=$(cat "$3.ts" "tuple_tree.ts" | sha1sum - | cut -d' ' -f1)
-sed -i "s;##CHECKSUM##;$CHECKSUM;g" package.json
-cp -rT "$2" node_modules
+if command -v sha1sum > /dev/null 2>&1; then
+  CHECKSUM=$(cat "$3.ts" "tuple_tree.ts" | sha1sum - | cut -d' ' -f1)
+else
+  CHECKSUM=$(cat "$3.ts" "tuple_tree.ts" | shasum -a 1 | cut -d' ' -f1)
+fi
+sed -i.bak -e "s;##CHECKSUM##;$CHECKSUM;g" package.json
+rm package.json.bak
+mkdir node_modules
+cp -R "$2"/. node_modules/
 ./node_modules/.bin/tsc -p .
 npm pack --silent > /dev/null
 cp "revng-$3-1."*.tgz ../"$3".ts.tgz

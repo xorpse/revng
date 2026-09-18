@@ -6,7 +6,9 @@ from pathlib import Path
 
 from revng.internal.support import import_pipebox
 
-_native_libraries = [Path(__file__).parent / "libmockPipebox.so"]
+_native_libraries = [
+    Path(__file__).parent / "libmockPipebox@CMAKE_SHARED_LIBRARY_SUFFIX@"
+]
 _module, _handles = import_pipebox(_native_libraries)
 _native_pipes = {
     "AppendFooPipe": _module.AppendFooPipe,

@@ -17,6 +17,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/GraphWriter.h"
+#include "llvm/Support/Progress.h"
 #include "llvm/Transforms/Utils/Mem2Reg.h"
 
 #include "revng/ABI/FunctionType/Layout.h"

@@ -18,6 +18,11 @@ public:
   std::string Name;
 
 public:
+  /// The name is the whole payload, so registering the same helper twice is
+  /// unambiguous. See `IsKeyOnlyRegisterable`.
+  static constexpr bool KeyDeterminesPayload = true;
+
+public:
   const std::string &key() const { return Name; }
 };
 

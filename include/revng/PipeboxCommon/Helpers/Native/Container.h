@@ -22,6 +22,13 @@ public:
   virtual std::map<ObjectID, pypeline::Buffer>
   serialize(llvm::ArrayRef<ObjectID> ToSave) const = 0;
 
+  /// The granularity of the objects this container holds. A caller that only
+  /// has the registered type name needs this to translate a request, and
+  /// cannot reach `T::Kind` through the type-erased interface otherwise.
+  virtual Kind kind() const = 0;
+
+  virtual llvm::StringRef mimeType() const = 0;
+
   virtual void *get() = 0;
 };
 
@@ -51,6 +58,10 @@ public:
 
     return Instance.serialize(Input);
   }
+
+  virtual Kind kind() const override { return T::Kind; }
+
+  virtual llvm::StringRef mimeType() const override { return T::MimeType; }
 
 public:
   virtual void *get() override { return &Instance; }

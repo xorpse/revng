@@ -17,6 +17,18 @@ concept IsStaticallyRegisterable = requires(Type &&Value) {
   { Value.key() } -> std::convertible_to<llvm::StringRef>;
 };
 
+/// Opt-in for payloads that are fully determined by their key.
+///
+/// Such a type can be registered twice with the same key without ambiguity,
+/// which happens when an inline definition in a header ends up in more than one
+/// loaded image: Mach-O does not always coalesce those across dylibs, so both
+/// copies run their constructor. For a payload that carries more than its key,
+/// a second registration under the same name is a genuine conflict and stays
+/// fatal.
+template<typename Type>
+concept IsKeyOnlyRegisterable = IsStaticallyRegisterable<Type>
+                                and Type::KeyDeterminesPayload;
+
 template<IsStaticallyRegisterable Registered>
 class RegisterManagedStaticImpl {
 private:
@@ -42,7 +54,8 @@ public:
   template<typename... Types>
   RegisterManagedStaticImpl(Types &&...Values) {
     auto [_, Success] = Registry->emplace(std::forward<Types>(Values)...);
-    revng_assert(Success);
+    if constexpr (not IsKeyOnlyRegisterable<Registered>)
+      revng_assert(Success);
   }
 
 public:

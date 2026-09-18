@@ -30,8 +30,16 @@ function(revng_register_library NAME EXPORT_NAME)
 
   add_dependencies(revng-all-binaries "${NAME}")
   target_include_directories("${NAME}" INTERFACE $<INSTALL_INTERFACE:include/>)
-  prepend_target_property("${NAME}" BUILD_RPATH
-                          "\$ORIGIN:\$ORIGIN/revng/analyses" ":")
+  if(APPLE)
+    prepend_target_property("${NAME}" BUILD_RPATH
+                            "@loader_path;@loader_path/revng/analyses" ";")
+    set_target_properties(
+      "${NAME}" PROPERTIES INSTALL_RPATH
+                           "@loader_path;@loader_path/revng/analyses")
+  else()
+    prepend_target_property("${NAME}" BUILD_RPATH
+                            "\$ORIGIN:\$ORIGIN/revng/analyses" ":")
+  endif()
   if(NOT "${CMAKE_INSTALL_RPATH}" STREQUAL "")
     append_target_property("${NAME}" BUILD_RPATH "${CMAKE_INSTALL_RPATH}" ":")
   endif()
@@ -45,6 +53,20 @@ function(revng_register_library NAME EXPORT_NAME)
     LIBRARY DESTINATION lib/
     ARCHIVE DESTINATION lib/)
 
+endfunction()
+
+# Keep a shared library in the link even though nothing references a symbol
+# from it. Backends and pipe providers contribute only through static
+# initialisers, so both `--as-needed` (the default on most ELF toolchains) and
+# `-dead_strip_dylibs` will otherwise drop them and leave an empty registry --
+# which surfaces much later as a confusing "unknown pipe" at run time.
+function(revng_retain_dso TARGET DEPENDENCY)
+  if(APPLE)
+    target_link_options(${TARGET} PRIVATE
+                        "-Wl,-needed_library,$<TARGET_FILE:${DEPENDENCY}>")
+  else()
+    target_link_options(${TARGET} PRIVATE "-Wl,--no-as-needed")
+  endif()
 endfunction()
 
 macro(revng_add_library NAME TYPE EXPORT_NAME)
@@ -61,7 +83,15 @@ macro(revng_add_analyses_library NAME EXPORT_NAME)
   add_library("${NAME}" SHARED ${ARGN})
   add_dependencies(revng-all-binaries "${NAME}")
   target_include_directories("${NAME}" INTERFACE $<INSTALL_INTERFACE:include/>)
-  prepend_target_property("${NAME}" BUILD_RPATH "\$ORIGIN/../../:\$ORIGIN" ":")
+  if(APPLE)
+    prepend_target_property("${NAME}" BUILD_RPATH
+                            "@loader_path/../../;@loader_path" ";")
+    set_target_properties("${NAME}" PROPERTIES INSTALL_RPATH
+                                               "@loader_path/../../;@loader_path")
+  else()
+    prepend_target_property("${NAME}" BUILD_RPATH
+                            "\$ORIGIN/../../:\$ORIGIN" ":")
+  endif()
   if(NOT "${CMAKE_INSTALL_RPATH}" STREQUAL "")
     append_target_property("${NAME}" BUILD_RPATH "${CMAKE_INSTALL_RPATH}" ":")
   endif()
@@ -99,16 +129,30 @@ macro(revng_add_executable_internal NAME TARGET_PATH)
   endif()
 
   add_executable("${NAME}" ${ARGN})
-  append_target_property("${NAME}" "LINK_FLAGS" "-pie" " ")
+  if(NOT APPLE)
+    append_target_property("${NAME}" "LINK_FLAGS" "-pie" " ")
+  endif()
 
   add_dependencies(revng-all-binaries "${NAME}")
 
   # Set BUILD_RPATH
-  prepend_target_property(
-    "${NAME}"
-    BUILD_RPATH
-    "\$ORIGIN/${RELATIVE_TO_ROOT}lib/:\$ORIGIN/${RELATIVE_TO_ROOT}lib/revng/analyses/"
-    ":")
+  if(APPLE)
+    prepend_target_property(
+      "${NAME}"
+      BUILD_RPATH
+      "@executable_path/${RELATIVE_TO_ROOT}lib/;@executable_path/${RELATIVE_TO_ROOT}lib/revng/analyses/"
+      ";")
+    set_target_properties(
+      "${NAME}"
+      PROPERTIES INSTALL_RPATH
+                 "@executable_path/${RELATIVE_TO_ROOT}lib/;@executable_path/${RELATIVE_TO_ROOT}lib/revng/analyses/")
+  else()
+    prepend_target_property(
+      "${NAME}"
+      BUILD_RPATH
+      "\$ORIGIN/${RELATIVE_TO_ROOT}lib/:\$ORIGIN/${RELATIVE_TO_ROOT}lib/revng/analyses/"
+      ":")
+  endif()
   if(NOT "${CMAKE_INSTALL_RPATH}" STREQUAL "")
     append_target_property("${NAME}" BUILD_RPATH "${CMAKE_INSTALL_RPATH}" ":")
   endif()

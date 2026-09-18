@@ -4,6 +4,7 @@
 
 import inspect
 import signal
+import sys
 import tarfile
 from io import BytesIO
 
@@ -18,7 +19,8 @@ from revng.pypeline.task.pipe import Pipe, PipeDependencies
 from revng.pypeline.task.task import TaskArgument, TaskArgumentAccess
 from revng.support import get_root
 
-_native_libraries = [get_root() / "lib/librevngPipebox.so"]
+_library_suffix = ".dylib" if sys.platform == "darwin" else ".so"
+_native_libraries = [get_root() / f"lib/librevngPipebox{_library_suffix}"]
 _module, _handles = import_pipebox(_native_libraries)
 
 _native_pipes: dict[str, type] = {}

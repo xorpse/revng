@@ -4,6 +4,10 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+// Registration populates two registries: the native one, which is all a C++
+// embedder needs, and the Python one. Only the latter needs nanobind, so a
+// build without the Python bindings can still register everything natively.
+#ifdef REVNG_PIPEBOX_PYTHON
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"
 #include "nanobind/stl/pair.h"
@@ -12,11 +16,14 @@
 #include "nanobind/stl/tuple.h"
 #include "nanobind/stl/vector.h"
 
+#endif
+
 #include "revng/PipeboxCommon/Concepts.h"
 #include "revng/PipeboxCommon/Helpers/Native/Registry.h"
 #include "revng/PipeboxCommon/Helpers/PipeRunPipes/FunctionPipe.h"
 #include "revng/PipeboxCommon/Helpers/PipeRunPipes/SingleOutputPipe.h"
 #include "revng/PipeboxCommon/Helpers/PipeRunPipes/TypeDefinitionPipe.h"
+#ifdef REVNG_PIPEBOX_PYTHON
 #include "revng/PipeboxCommon/Helpers/Python/Casters.h"
 #include "revng/PipeboxCommon/Helpers/Python/ContainerIO.h"
 #include "revng/PipeboxCommon/Helpers/Python/Invalidate.h"
@@ -24,6 +31,7 @@
 #include "revng/PipeboxCommon/Helpers/Python/RunAnalysis.h"
 #include "revng/PipeboxCommon/Helpers/Python/RunPipe.h"
 #include "revng/PipeboxCommon/Helpers/Python/SignatureHelper.h"
+#endif
 
 inline Logger PypelineRegisterLogger("pypeline-register");
 
@@ -49,10 +57,13 @@ inline std::string pascalCaseName(llvm::StringRef Name) {
 template<IsAnalysis T>
 struct RegisterAnalysis {
   RegisterAnalysis() {
+#ifdef REVNG_PIPEBOX_PYTHON
     using namespace nanobind::literals;
+#endif
     using namespace revng::pypeline::helpers;
 
-    // Python
+#ifdef REVNG_PIPEBOX_PYTHON
+    // Python bindings
     python::Registry.registerModuleInitializer([](nanobind::module_ &M,
                                                   python::BaseClasses &BC) {
       std::string Name = pascalCaseName(T::Name);
@@ -77,6 +88,7 @@ struct RegisterAnalysis {
         AnalysisClass.def("is_available", &T::isAvailable);
     });
 
+#endif
     // Native
     revng_assert(native::Registry.Analyses.count(T::Name) == 0);
     native::Registry.Analyses[T::Name] =
@@ -91,7 +103,8 @@ struct RegisterContainer {
   RegisterContainer() {
     using namespace revng::pypeline::helpers;
 
-    // Python
+#ifdef REVNG_PIPEBOX_PYTHON
+    // Python bindings
     python::Registry.registerModuleInitializer([](nanobind::module_ &M,
                                                   python::BaseClasses &BC) {
       std::string Name = pascalCaseName(T::Name);
@@ -109,6 +122,7 @@ struct RegisterContainer {
         .def("serialize", &python::ContainerIO<T>::serialize);
     });
 
+#endif
     // Native
     revng_assert(native::Registry.Containers.count(T::Name) == 0);
     native::Registry.Containers[T::Name] =
@@ -142,12 +156,15 @@ void checkPipeArgumentAccess() {
 template<IsPipe T>
 struct RegisterPipe {
   RegisterPipe() {
+#ifdef REVNG_PIPEBOX_PYTHON
     using namespace nanobind::literals;
+#endif
     using namespace revng::pypeline::helpers;
 
     detail::checkPipeArgumentAccess<T>();
 
-    // Python
+#ifdef REVNG_PIPEBOX_PYTHON
+    // Python bindings
     python::Registry.registerModuleInitializer([](nanobind::module_ &M,
                                                   python::BaseClasses &BC) {
       std::string Name = pascalCaseName(T::Name);
@@ -189,6 +206,7 @@ struct RegisterPipe {
       }
     });
 
+#endif
     // Native
     if (native::Registry.Pipes.count(T::Name) != 0) {
       std::string Error = "Duplicate pipes: '" + T::Name.str() + "'";

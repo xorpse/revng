@@ -3,9 +3,23 @@
 #
 
 from collections.abc import Buffer
-from compression.zstd import COMPRESSION_LEVEL_DEFAULT, ZstdError
-from compression.zstd import compress as zstd_compress
-from compression.zstd import decompress as zstd_decompress
+try:
+    from compression.zstd import COMPRESSION_LEVEL_DEFAULT, ZstdError
+    from compression.zstd import compress as zstd_compress
+    from compression.zstd import decompress as zstd_decompress
+except ImportError:
+    # compression.zstd is part of Python 3.14. Keep binary distributions usable
+    # with the Python 3.13 currently shipped by Homebrew and many Linux hosts.
+    import zstandard
+
+    COMPRESSION_LEVEL_DEFAULT = 3
+    ZstdError = zstandard.ZstdError
+
+    def zstd_compress(data: Buffer, level: int) -> bytes:
+        return zstandard.ZstdCompressor(level=level).compress(data)
+
+    def zstd_decompress(data: Buffer) -> bytes:
+        return zstandard.ZstdDecompressor().decompress(data)
 
 from revng.pypeline.utils.cabc import ABC, abstractmethod
 
