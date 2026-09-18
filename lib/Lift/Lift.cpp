@@ -4,18 +4,17 @@
 
 #include "llvm/Transforms/IPO/StripSymbols.h"
 
+#include "revng/Lift/AbstractLifter.h"
 #include "revng/Lift/JumpTargetReason.h"
-#include "revng/Lift/LibTcg.h"
 #include "revng/Lift/Lift.h"
+#include "revng/Lift/PostLiftVerifyPass.h"
 #include "revng/Support/CommandLine.h"
 #include "revng/Support/IRHelperRegistry.h"
 #include "revng/Support/IRHelpers.h"
 #include "revng/Support/NewPC.h"
-#include "revng/Support/ResourceFinder.h"
 #include "revng/Support/SimplePassManager.h"
+#include "revng/Support/YAMLTraits.h"
 
-#include "CodeGenerator.h"
-#include "PostLiftVerifyPass.h"
 
 using namespace llvm::cl;
 
@@ -30,41 +29,15 @@ alias A1("e",
          aliasopt(EntryPointAddress),
          cat(MainCategory));
 
+// Only consulted when the pipe's own configuration does not name a backend,
+// which is what tests and a direct `run-pipe` invocation need.
+opt<std::string> LifterBackend("lifter-backend",
+                               desc("lifter backend to use"),
+                               value_desc("name"),
+                               init(""),
+                               cat(MainCategory));
+
 } // namespace
-
-struct ExternalFilePaths {
-  std::string LibHelpers;
-  std::string EarlyLinked;
-};
-
-static ExternalFilePaths
-findExternalFilePaths(const model::Architecture::Values Architecture) {
-  // What symbols from the revng namespace are actually used here?
-  using namespace revng;
-
-  const std::string ArchName = model::Architecture::getQEMUName(Architecture)
-                                 .str();
-
-  ExternalFilePaths Paths = {};
-
-  // Note: here we use the declaration version of the helpers, i.e., where all
-  //       helper functions are just declarations.
-  const std::string LibHelpersName = "/share/revng/"
-                                     "libtcg-helpers-declarations-only-"
-                                     + ArchName + ".bc";
-  auto OptionalHelpers = ResourceFinder.findFile(LibHelpersName);
-  revng_assert(OptionalHelpers.has_value(), "Cannot find libtcg helpers");
-  Paths.LibHelpers = OptionalHelpers.value();
-
-  const std::string EarlyLinkedName = "/share/revng/early-linked-" + ArchName
-                                      + ".ll";
-  auto OptionalEarlyLinked = ResourceFinder.findFile(EarlyLinkedName);
-  revng_assert(OptionalEarlyLinked.has_value(), "Cannot find early-linked.ll");
-
-  Paths.EarlyLinked = OptionalEarlyLinked.value();
-
-  return Paths;
-}
 
 /// Map describing the jump targets in the LLVM module, each one is identified
 /// by its MetaAddress. The boolean value represents if the jump target has been
@@ -177,47 +150,68 @@ static bool shouldInvalidateRoot(const std::map<MetaAddress, bool> &JumpTargets,
   return false;
 }
 
+template<>
+struct llvm::yaml::MappingTraits<revng::pypeline::piperuns::Lift::Configuration> {
+  using Configuration = revng::pypeline::piperuns::Lift::Configuration;
+
+  static void mapping(IO &IO, Configuration &Fields) {
+    IO.mapOptional("backend", Fields.Backend);
+    IO.mapOptional("entry-point", Fields.EntryPoint);
+  }
+};
+
 namespace revng::pypeline::piperuns {
+
+Lift::Configuration Lift::Configuration::parse(llvm::StringRef Input) {
+  if (Input.empty())
+    return {};
+  return llvm::cantFail(fromString<Configuration>(Input));
+}
 
 Lift::Lift(const class Model &Model,
            llvm::StringRef Config,
            llvm::StringRef DynamicConfig,
            const BinariesContainer &Binary,
            LLVMRootContainer &ModuleContainer) :
-  TheModel(Model), Binary(Binary), ModuleContainer(ModuleContainer) {
+  TheModel(Model),
+  Binary(Binary),
+  ModuleContainer(ModuleContainer),
+  // The dynamic configuration is per-run, so it wins over the static one.
+  Options(Configuration::parse(DynamicConfig.empty() ? Config :
+                                                       DynamicConfig)) {
 }
 
 CustomInvalidationData Lift::run() {
-  llvm::Task T(6, "Lift");
+  llvm::Task T(4, "Lift");
   const TupleTree<model::Binary> &Model = TheModel.get();
 
-  T.advance("findFiles", false);
-  const auto Paths = findExternalFilePaths(Model->Architecture());
-
-  // Look for the library in the system's paths
-  T.advance("Load libtcg", false);
-  auto TheLibTcg = LibTcg::get(Model->Architecture());
-
-  // Get access to raw binary data
-  revng_assert(Binary.size() == 1);
-  llvm::ArrayRef<char> File = Binary.getFile(0);
+  // Get access to raw binary data. With a lazily-served address space the
+  // container can be empty and `RawBinaryView` reads through the registered
+  // provider instead, so only require that one of the two has bytes.
+  revng_assert(Binary.size() <= 1);
+  llvm::ArrayRef<char> File = Binary.size() == 1 ? Binary.getFile(0) :
+                                                  llvm::ArrayRef<char>{};
   RawBinaryView RawBinary(*Model, { File.data(), File.size() });
   llvm::Module &Module = ModuleContainer.getModule();
 
-  T.advance("Construct CodeGenerator", false);
-  CodeGenerator Generator(RawBinary,
-                          &Module,
-                          Model,
-                          Paths.LibHelpers,
-                          Paths.EarlyLinked,
-                          model::Architecture::x86_64);
+  T.advance("Create lifter", false);
+  llvm::StringRef Backend = Options.Backend.empty() ?
+                              llvm::StringRef(LifterBackend) :
+                              llvm::StringRef(Options.Backend);
+  auto Lifter = llvm::cantFail(Backend.empty() ?
+                                 lift::LifterRegistry::createDefault(Model) :
+                                 lift::LifterRegistry::create(Backend, Model));
 
-  std::optional<uint64_t> EntryPointAddressOptional;
-  if (EntryPointAddress.getNumOccurrences() != 0)
-    EntryPointAddressOptional = EntryPointAddress;
+  llvm::SmallVector<MetaAddress, 1> Entries;
+  if (Options.EntryPoint.has_value())
+    Entries.push_back(MetaAddress::fromPC(Model->Architecture(),
+                                          *Options.EntryPoint));
+  else if (EntryPointAddress.getNumOccurrences() != 0)
+    Entries.push_back(MetaAddress::fromPC(Model->Architecture(),
+                                          EntryPointAddress));
+
   T.advance("Translate", true);
-
-  Generator.translate(TheLibTcg, EntryPointAddressOptional);
+  llvm::cantFail(Lifter->lift(*Model, RawBinary, Entries, Module));
 
   T.advance("Sort Module", true);
   sortModule(Module);
@@ -245,7 +239,16 @@ CustomInvalidationData Lift::run() {
 
 llvm::Error Lift::checkPrecondition(const class Model &Model) {
   const model::Binary &Binary = *Model.get().get();
-  return revng::joinErrors(::checkPrecondition(Binary),
+
+  llvm::Error BackendError = llvm::Error::success();
+  if (not lift::LifterRegistry::hasLifter(Binary)) {
+    std::string Message = "no lifter backend is registered for ";
+    Message += model::Architecture::getName(Binary.Architecture());
+    BackendError = revng::createError(Message);
+  }
+
+  return revng::joinErrors(std::move(BackendError),
+                           ::checkPrecondition(Binary),
                            RawBinaryView::checkPrecondition(Binary));
 }
 

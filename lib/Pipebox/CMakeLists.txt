@@ -8,7 +8,6 @@ revng_add_library_internal(revngPipebox SHARED Pipebox.cpp LLVMPipe.cpp
 llvm_map_components_to_libnames(LLVM_LIBRARIES Support Core)
 target_link_libraries(
   revngPipebox
-  ${Python3_LIBRARIES}
   ${LLVM_LIBRARIES}
   revngCanonicalize
   revngClift
@@ -27,7 +26,10 @@ target_link_libraries(
   revngSegmentReferences
   revngYield
   revngYieldPipes
-  nanobind
   revngSupport)
 
-target_include_directories(revngPipebox PUBLIC ${Python3_INCLUDE_DIRS})
+if(REVNG_PIPEBOX_PYTHON)
+  target_compile_definitions(revngPipebox PUBLIC REVNG_PIPEBOX_PYTHON)
+  target_link_libraries(revngPipebox ${Python3_LIBRARIES} nanobind)
+  target_include_directories(revngPipebox PUBLIC ${Python3_INCLUDE_DIRS})
+endif()

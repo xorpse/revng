@@ -83,6 +83,8 @@ public:
 };
 
 extern template void RUAResults::dump<Logger>(Logger &, const char *) const;
+extern template void
+RUAResults::dump<std::ostream>(std::ostream &, const char *) const;
 
 RUAResults analyzeRegisterUsage(llvm::Function *F,
                                 model::Architecture::Values Architecture,

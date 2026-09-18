@@ -75,7 +75,7 @@
 #include "CodeGenerator.h"
 #include "ExternalJumpsHandler.h"
 #include "InstructionTranslator.h"
-#include "JumpTargetManager.h"
+#include "revng/Lift/JumpTargetManager.h"
 
 using namespace llvm;
 

@@ -15,7 +15,7 @@
 #include "revng/ValueMaterializer/DataFlowRangeAnalysis.h"
 #include "revng/ValueMaterializer/ValueMaterializer.h"
 
-#include "JumpTargetManager.h"
+#include "revng/Lift/JumpTargetManager.h"
 #include "ValueMaterializerPass.h"
 
 // This name is not present after `lift`.

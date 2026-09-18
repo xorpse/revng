@@ -3,6 +3,7 @@
 #
 
 import os
+import sys
 from fnmatch import fnmatch
 from itertools import chain
 from pathlib import Path
@@ -50,7 +51,13 @@ def collect_files_recursive(
 
 
 def collect_libraries(search_prefixes: AnyPaths) -> Tuple[List[str], Set[str]]:
-    to_load = collect_files(search_prefixes, ["lib", "revng", "analyses"], "*.so")
+    pattern = "*.dylib" if sys.platform == "darwin" else "*.so"
+    to_load = collect_files(search_prefixes, ["lib", "revng", "analyses"], pattern)
+
+    # ELF DT_NEEDED inspection is used only to select sanitizer preload roots.
+    # Mach-O uses LC_LOAD_DYLIB and does not require that Linux-only handling.
+    if sys.platform == "darwin":
+        return (to_load, set())
 
     # Identify all the libraries that are dependencies of other libraries, i.e.,
     # non-roots in the dependencies tree. Note that circular dependencies are

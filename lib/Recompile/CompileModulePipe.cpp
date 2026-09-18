@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
@@ -96,7 +97,17 @@ void CompileRootModule::run() {
   M->getContext()
     .setDiagnosticHandler(std::make_unique<CustomDiagnosticHandler>());
 
-  {
+  // Only a module that actually references QEMU helpers needs them linked in;
+  // a helper-free backend produces none, and the bitcode does not exist on a
+  // build without libtcg.
+  const bool
+    NeedsLibTcgHelpers = llvm::any_of(*M, [](const Function &Function) {
+      return Function.isDeclaration()
+             and (Function.getName().starts_with("helper_")
+                  or FunctionTags::Helper.isTagOf(&Function));
+    });
+
+  if (NeedsLibTcgHelpers) {
     auto Architecture = Binary.Architecture();
     auto ArchName = model::Architecture::getQEMUName(Architecture).str();
 
@@ -111,9 +122,9 @@ void CompileRootModule::run() {
     auto HelpersModule = parseIR(M->getContext(), OptionalHelpers.value());
 
     linkModules(std::move(HelpersModule), *M, GlobalValue::InternalLinkage);
-
-    M->getFunction("main")->setLinkage(llvm::GlobalValue::ExternalLinkage);
   }
+
+  M->getFunction("main")->setLinkage(llvm::GlobalValue::ExternalLinkage);
 
   for (Function &F : *M)
     F.setSection("");

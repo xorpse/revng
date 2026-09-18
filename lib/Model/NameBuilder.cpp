@@ -55,8 +55,10 @@ static const SortedVector<std::string> &loadHelperNameList() {
   if (not Cache.has_value()) {
     auto MaybePath = revng::ResourceFinder.findFile("share/revng/"
                                                     "helper-list.csv");
+    // Note: do not name the path here -- there is none, and dereferencing the
+    // empty optional to build the message crashes before it can be printed.
     revng_assert(MaybePath.has_value(),
-                 ("Helper list is missing: " + *MaybePath).c_str());
+                 "share/revng/helper-list.csv is missing");
 
     auto MaybeBuffer = llvm::MemoryBuffer::getFile(*MaybePath, true);
     revng_assert(MaybeBuffer, ("Can't open " + *MaybePath).c_str());

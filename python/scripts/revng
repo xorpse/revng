@@ -14,7 +14,13 @@ if sys.prefix != sys.base_prefix:
     if interpreter_path != sys.executable:
         os.execv(interpreter_path, [interpreter_path, __file__, *sys.argv[1:]])
 
-libpath = Path(sysconfig.get_path("purelib")).relative_to(sysconfig.get_config_var("base"))
+try:
+    libpath = Path(sysconfig.get_path("purelib")).relative_to(sysconfig.get_config_var("base"))
+except ValueError:
+    # Homebrew keeps `purelib` outside the framework prefix that `base` names,
+    # so there is no relative path between them. The install tree follows the
+    # conventional layout regardless, so name it directly.
+    libpath = Path("lib") / f"python{sysconfig.get_python_version()}" / "site-packages"
 new_path = (Path(__file__) / "../.." / libpath).resolve()
 assert new_path.is_dir()
 

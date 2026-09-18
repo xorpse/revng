@@ -63,8 +63,19 @@ llvm_map_components_to_libnames(
   X86CodeGen
   X86Desc
   X86Info)
-target_link_libraries(revngSupport z zstd ${LibArchive_LIBRARIES}
-                      ${LLVM_LIBRARIES})
+
+# The host's own backend is needed wherever revng runs, not just x86.
+if(APPLE OR CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+  llvm_map_components_to_libnames(
+    LLVM_NATIVE_LIBRARIES
+    AArch64AsmParser
+    AArch64CodeGen
+    AArch64Desc
+    AArch64Info)
+endif()
+
+target_link_libraries(revngSupport z zstd LibArchive::LibArchive
+                      ${LLVM_LIBRARIES} ${LLVM_NATIVE_LIBRARIES})
 
 target_include_directories(revngSupport INTERFACE $<INSTALL_INTERFACE:include/>)
 

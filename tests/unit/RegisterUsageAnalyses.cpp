@@ -23,20 +23,25 @@ struct TestGraphManager {
 
   /// Two distinct dummy CSVs, used purely as opaque tokens to populate the rua
   /// index space (indices 0 and 1); the tests below address them by raw index.
-  /// They are owned by the module above and never dereferenced by the analyses.
-  std::unique_ptr<llvm::GlobalVariable> CSVs[2] = {
-    std::make_unique<llvm::GlobalVariable>(Module,
-                                           llvm::Type::getInt64Ty(Context),
-                                           false,
-                                           llvm::GlobalValue::ExternalLinkage,
-                                           nullptr,
-                                           ""),
-    std::make_unique<llvm::GlobalVariable>(Module,
-                                           llvm::Type::getInt64Ty(Context),
-                                           false,
-                                           llvm::GlobalValue::ExternalLinkage,
-                                           nullptr,
-                                           ""),
+  ///
+  /// The constructor taking a `Module &` appends the global to that module's
+  /// list, so the module owns it. These must therefore not be held by a smart
+  /// pointer: `~GlobalVariable` only drops references and does not unlink from
+  /// the parent, so deleting one here would leave `~Module` walking a freed
+  /// entry.
+  llvm::GlobalVariable *CSVs[2] = {
+    new llvm::GlobalVariable(Module,
+                             llvm::Type::getInt64Ty(Context),
+                             false,
+                             llvm::GlobalValue::ExternalLinkage,
+                             nullptr,
+                             ""),
+    new llvm::GlobalVariable(Module,
+                             llvm::Type::getInt64Ty(Context),
+                             false,
+                             llvm::GlobalValue::ExternalLinkage,
+                             nullptr,
+                             ""),
   };
 
   struct Graph {
@@ -54,8 +59,8 @@ struct TestGraphManager {
 
   Graph singleNode(rua::Block::OperationsVector &&Operations) {
     rua::Function F;
-    F.csvIndex(CSVs[0].get());
-    F.csvIndex(CSVs[1].get());
+    F.csvIndex(CSVs[0]);
+    F.csvIndex(CSVs[1]);
     auto *Entry = F.addNode();
     F.setEntryNode(Entry);
     Entry->Operations = Operations;
@@ -67,8 +72,8 @@ struct TestGraphManager {
                 rua::Block::OperationsVector &&Right,
                 rua::Block::OperationsVector &&Footer) {
     rua::Function F;
-    F.csvIndex(CSVs[0].get());
-    F.csvIndex(CSVs[1].get());
+    F.csvIndex(CSVs[0]);
+    F.csvIndex(CSVs[1]);
 
     auto *HeaderBlock = F.addNode();
     F.setEntryNode(HeaderBlock);
@@ -96,8 +101,8 @@ struct TestGraphManager {
              rua::Block::OperationsVector &&LoopBody,
              rua::Block::OperationsVector &&Footer) {
     rua::Function F;
-    F.csvIndex(CSVs[0].get());
-    F.csvIndex(CSVs[1].get());
+    F.csvIndex(CSVs[0]);
+    F.csvIndex(CSVs[1]);
 
     auto *HeaderBlock = F.addNode();
     F.setEntryNode(HeaderBlock);
@@ -127,8 +132,8 @@ struct TestGraphManager {
                  rua::Block::OperationsVector &&NoReturn,
                  rua::Block::OperationsVector &&Exit) {
     rua::Function F;
-    F.csvIndex(CSVs[0].get());
-    F.csvIndex(CSVs[1].get());
+    F.csvIndex(CSVs[0]);
+    F.csvIndex(CSVs[1]);
 
     auto *HeaderBlock = F.addNode();
     F.setEntryNode(HeaderBlock);

@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
 //
 // Concepts to simplify working with tuples.

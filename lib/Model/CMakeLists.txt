@@ -15,6 +15,7 @@ revng_add_analyses_library_internal(
   TypeSystemPrinter.cpp
   Processing.cpp
   ProgramCounterHandler.cpp
+  RawBinaryProvider.cpp
   RawBinaryView.cpp
   Register.cpp
   Type.cpp

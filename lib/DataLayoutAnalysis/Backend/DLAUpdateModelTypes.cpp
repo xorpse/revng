@@ -44,6 +44,18 @@ using llvm::dyn_cast;
 static Logger Log("dla-update-model-funcs");
 static Logger ModelLog("dla-dump-model-with-funcs");
 
+// getNameOrAsOperand() is intentionally unavailable when LLVM headers see
+// NDEBUG. Keep diagnostics usable in Release builds through the public API.
+static std::string nameOrOperand(const llvm::Value &Value) {
+  if (Value.hasName())
+    return Value.getName().str();
+
+  std::string Result;
+  llvm::raw_string_ostream Stream(Result);
+  Value.printAsOperand(Stream, false);
+  return Result;
+}
+
 using model::PrimitiveKind::Generic;
 using model::PrimitiveKind::PointerOrNumber;
 
@@ -97,7 +109,7 @@ static bool updateArgumentTypes(model::Binary &Model,
       const llvm::Value *LLVMStackArg = toLLVMValue(*std::prev(LLVMArgs.end()));
 
       revng_log(Log,
-                "Updating stack arg " << LLVMStackArg->getNameOrAsOperand());
+                "Updating stack arg " << nameOrOperand(*LLVMStackArg));
       LayoutTypePtr Key{ LLVMStackArg, LayoutTypePtr::FieldNumNone };
 
       if (auto NewTypeIt = DLATypes.find(Key); NewTypeIt != DLATypes.end()) {
@@ -144,7 +156,7 @@ static bool updateArgumentTypes(model::Binary &Model,
     revng_assert(ModelArg.Type()->isScalar());
 
     const llvm::Value *LLVMVal = toLLVMValue(LLVMArg);
-    revng_log(Log, "Updating argument " << LLVMVal->getNameOrAsOperand());
+    revng_log(Log, "Updating argument " << nameOrOperand(*LLVMVal));
 
     // Don't update if the type is already fine-grained or if the DLA has
     // nothing to say.
@@ -202,7 +214,7 @@ static bool updateReturnType(model::Binary &Model,
                                     ModelRet.index();
     revng_log(Log,
               "Updating elem " << Index << " of "
-                               << LLVMRetVal->getNameOrAsOperand());
+                               << nameOrOperand(*LLVMRetVal));
 
     // Don't update if the type is already fine-grained or if the DLA has
     // nothing to say.
@@ -252,7 +264,7 @@ static bool updateArgumentTypes(model::Binary &Model,
 
   for (const auto &[LLVMArg, ModelArg] : llvm::zip_first(LLVMArgs, ModelArgs)) {
     const llvm::Value *LLVMVal = toLLVMValue(LLVMArg);
-    revng_log(Log, "Updating argument " << LLVMVal->getNameOrAsOperand());
+    revng_log(Log, "Updating argument " << nameOrOperand(*LLVMVal));
 
     // Don't update if the type is already fine-grained or if the DLA has
     // nothing to say.
@@ -304,7 +316,7 @@ static bool updateReturnType(model::Binary &Model,
                 "WARNING: model::CABIFunctionDefinition returns a scalar type, "
                 "the associated llvm::Function should return an integer or a "
                 "pointer: "
-                  << LLVMRetVal->getNameOrAsOperand());
+                  << nameOrOperand(*LLVMRetVal));
       // If this happens we have an aggregate on LLVMIR and a scalar on
       // CABIFunction type. This should only happen in corner cases and we don't
       // have a general way to solve it properly right now, so we bail out and
@@ -312,7 +324,7 @@ static bool updateReturnType(model::Binary &Model,
       return false;
     }
 
-    revng_log(Log, "Is scalar: " << LLVMRetVal->getNameOrAsOperand());
+    revng_log(Log, "Is scalar: " << nameOrOperand(*LLVMRetVal));
 
     // Don't update if the type is already fine-grained or if the DLA has
     // nothing to say.
@@ -706,7 +718,7 @@ bool dla::updateFuncSignatures(const llvm::Module &M,
 
     revng_log(Log,
               "Updating prototype of function "
-                << LLVMFunc.getNameOrAsOperand());
+                << nameOrOperand(LLVMFunc));
     Updated |= updatePrototype(*Model, ModelPrototype, &LLVMFunc, TypeMap);
     Updated |= updateStackFrameType(*ModelFunc, LLVMFunc, TypeMap, *Model);
 
@@ -717,7 +729,7 @@ bool dla::updateFuncSignatures(const llvm::Module &M,
         if (Prototype != nullptr) {
           revng_log(Log,
                     "Updating prototype of indirect call "
-                      << I->getNameOrAsOperand());
+                      << nameOrOperand(*I));
           Updated |= updatePrototype(*Model, *Prototype, I, TypeMap);
         }
       }

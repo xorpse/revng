@@ -8,13 +8,12 @@
 #include "llvm/IR/ModuleSlotTracker.h"
 
 #include "revng/Lift/Helpers.h"
+#include "revng/Lift/PostLiftVerifyPass.h"
 #include "revng/Model/FunctionTags.h"
 #include "revng/Support/Assert.h"
 #include "revng/Support/EmitAbort.h"
 #include "revng/Support/FunctionCallMarker.h"
 #include "revng/Support/NewPC.h"
-
-#include "PostLiftVerifyPass.h"
 
 using namespace llvm;
 
@@ -94,6 +93,7 @@ bool PostLiftVerifyPass::runOnModule(Module &M) {
                 or AbortHelper.getCall(&I).has_value());
 
         Good = Good or FunctionTags::SegmentGlobalGetter.isTagOf(Callee);
+        Good = Good or FunctionTags::Helper.isTagOf(Callee);
 
         switch (Callee->getIntrinsicID()) {
         case Intrinsic::fshl:
