@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
   if (written >= (int) sizeof(pipeline_option))
     return 2;
   const char *initialize_arguments[] = { argv[0], pipeline_option };
-  if (!rp_initialize(2, initialize_arguments, 0, NULL))
+  if (!rp_initialise(2, initialize_arguments, 0, NULL))
     return 1;
 
   int result = 1;

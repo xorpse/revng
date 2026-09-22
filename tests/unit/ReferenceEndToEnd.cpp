@@ -71,7 +71,7 @@ BOOST_AUTO_TEST_CASE(IsolateThroughEmitC) {
       std::string("--pipeline-path=") + REVNG_MAIN_PIPELINE;
   const char *Arguments[] = {"test-reference-end-to-end",
                              PipelineOption.c_str()};
-  BOOST_REQUIRE(rp_initialize(2, Arguments, 0, nullptr));
+  BOOST_REQUIRE(rp_initialise(2, Arguments, 0, nullptr));
 
   AddressSpace Space;
   rp_address_space_callbacks Callbacks{&Space,         architecture, entryPoint,
@@ -138,7 +138,7 @@ BOOST_AUTO_TEST_CASE(IsolateThroughEmitC) {
   BOOST_CHECK(not C.contains("<div"));
 
   std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)> DirectArtifact(
-      rp_manager_produce_artifact(Manager.get(), "emit-c-as-single-file",
+      rp_manager_produce_artefact(Manager.get(), "emit-c-as-single-file",
                                   "decompiled-single-file", "binary", 0,
                                   nullptr, Error.get()),
       rp_buffer_destroy);

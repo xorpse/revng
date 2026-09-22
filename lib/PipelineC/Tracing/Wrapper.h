@@ -283,7 +283,7 @@ inline void handleArguments(T &&...Args) {
 
 // This function will be used in each PipelineC function we need to wrap
 // For example:
-// rp_initialize(...) { return wrap<"rp_initialize">(_rp_initialize, ...); }
+// rp_initialise(...) { return wrap<"rp_initialise">(_rp_initialise, ...); }
 template<ConstexprString Name, typename CalleeT, typename... ArgsT>
 inline decltype(auto) wrap(CalleeT Callee, ArgsT... Args) {
   using ReturnT = typename decltype(std::function{ Callee })::result_type;

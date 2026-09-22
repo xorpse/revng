@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
   if (written < 0 || written >= (int) sizeof(pipeline_option))
     return 2;
   const char *initialize_arguments[] = { argv[0], pipeline_option };
-  if (!rp_initialize(2, initialize_arguments, 0, NULL))
+  if (!rp_initialise(2, initialize_arguments, 0, NULL))
     return 1;
 
   int result = 1;
@@ -144,7 +144,7 @@ int main(int argc, char **argv) {
            || !contains(data, size, "int32_t add(int32_t a, int32_t b)");
   rp_buffer_destroy(decompiled);
 
-  rp_buffer *artifact = rp_manager_produce_artifact(manager,
+  rp_buffer *artifact = rp_manager_produce_artefact(manager,
                                                     "emit-c-as-single-file",
                                                     "decompiled-single-file",
                                                     "binary",

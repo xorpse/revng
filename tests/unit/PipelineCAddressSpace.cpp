@@ -98,7 +98,7 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
   const char *Arguments[] = {"test-pipeline-c-address-space",
                              PipelineOption.c_str(),
                              "--lifter-backend=reference-x86_64"};
-  BOOST_REQUIRE(rp_initialize(3, Arguments, 0, nullptr));
+  BOOST_REQUIRE(rp_initialise(3, Arguments, 0, nullptr));
 
   auto ReferenceBackend = revng::lift::createReferenceX86Lifter();
   BOOST_REQUIRE(ReferenceBackend != nullptr);
@@ -193,7 +193,7 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
       Manager, "lifted", "llvm-root", nullptr, &TransformCallbacks, &Error));
   BOOST_CHECK(TransformCalled);
   std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)> TransformedModule(
-      rp_manager_produce_artifact(Manager, "lifted", "llvm-root", "binary", 0,
+      rp_manager_produce_artefact(Manager, "lifted", "llvm-root", "binary", 0,
                                   nullptr, &Error),
       rp_buffer_destroy);
   BOOST_REQUIRE(TransformedModule != nullptr);
@@ -320,7 +320,7 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
   BOOST_CHECK(State.ReadCalls == 1U);
   BOOST_CHECK(State.ReleaseCalls == 0U);
 
-  BOOST_REQUIRE(rp_manager_materialize_address_space(Manager, &Error));
+  BOOST_REQUIRE(rp_manager_materialise_address_space(Manager, &Error));
   BOOST_CHECK(State.ReadCalls == 2U);
   BOOST_CHECK(State.ReleaseCalls == 1U);
   BOOST_CHECK(rp_manager_save(Manager));
