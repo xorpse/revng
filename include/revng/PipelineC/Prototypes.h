@@ -81,6 +81,13 @@
 bool rp_initialize(int argc, const char *argv[],
                    uint32_t signals_to_preserve_count,
                    int signals_to_preserve[]);
+
+/**
+ * \return true if rp_initialize has already run in this process. An embedder
+ *         shares the process with its host, so it cannot assume it is the one
+ *         that initialized the pipeline.
+ */
+bool rp_is_initialized();
 LENGTH_HINT(rp_initialize, 1, 0)
 LENGTH_HINT(rp_initialize, 3, 2)
 
@@ -141,11 +148,11 @@ LENGTH_HINT(rp_manager_create_from_string, 3, 2)
  */
 rp_manager * /*owning*/
 rp_manager_create_from_address_space(
-    const rp_address_space_callbacks *callbacks,
+    const rp_address_space_callbacks *callbacks, const char *pipeline,
     uint64_t materialize_for_serialization, uint64_t pipeline_flags_count,
     const char *pipeline_flags[], const char *execution_directory,
     rp_error *error);
-LENGTH_HINT(rp_manager_create_from_address_space, 3, 2)
+LENGTH_HINT(rp_manager_create_from_address_space, 4, 3)
 
 /**
  * File-backed lazy address-space convenience API. Files remain owned by the

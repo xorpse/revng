@@ -143,6 +143,10 @@ typedef void (*sighandler_t)(int);
 
 // NOLINTBEGIN
 
+static bool _rp_is_initialized() {
+  return Initialized;
+}
+
 static bool _rp_initialize(int argc, const char *argv[],
                            uint32_t signals_to_preserve_count,
                            int signals_to_preserve[]) {
@@ -172,7 +176,16 @@ static bool _rp_initialize(int argc, const char *argv[],
   revng_check(not InitRevngInstance.has_value());
   char **MutableArgv = const_cast<char **>(argv);
   InitRevngInstance.emplace(argc, MutableArgv, "",
-                            llvm::ArrayRef<llvm::cl::OptionCategory *>());
+                            llvm::ArrayRef<llvm::cl::OptionCategory *>(),
+                            /* ExitOnFailure = */ false);
+
+  if (const std::optional<std::string> &Error = InitRevngInstance->failure()) {
+    llvm::errs() << *Error << "\n";
+    InitRevngInstance.reset();
+    for (const auto &[SigNumber, Handler] : Signals)
+      signal(SigNumber, Handler);
+    return false;
+  }
 
   for (const auto &[SigNumber, Handler] : Signals) {
     // All of LLVM's initialization is complete, restore the original signals to
@@ -460,11 +473,20 @@ void releaseFileAddressSpace(void *Opaque) {
 
 static rp_manager *createManagerFromLoadedAddressSpace(
     revng::loader::LoadedAddressSpace Loaded,
-    std::shared_ptr<RawBinaryProvider> Provider, uint64_t pipeline_flags_count,
-    const char *pipeline_flags[], const char *execution_directory,
-    rp_error *error) {
-  std::unique_ptr<rp_manager> Manager(_rp_manager_create(
-      pipeline_flags_count, pipeline_flags, execution_directory));
+    std::shared_ptr<RawBinaryProvider> Provider, const char *pipeline,
+    uint64_t pipeline_flags_count, const char *pipeline_flags[],
+    const char *execution_directory, rp_error *error) {
+  // An embedder supplies the description directly; a null one falls back to
+  // `--pipeline-path`, which is how the tools pass it.
+  std::vector<std::string> Pipelines;
+  if (pipeline != nullptr)
+    Pipelines.emplace_back(pipeline);
+  std::unique_ptr<rp_manager> Manager(
+      pipeline != nullptr ?
+          rp_manager_create_impl(Pipelines, pipeline_flags_count,
+                                 pipeline_flags, execution_directory, false) :
+          _rp_manager_create(pipeline_flags_count, pipeline_flags,
+                             execution_directory));
   if (not Manager)
     return nullptr;
 
@@ -510,7 +532,7 @@ static rp_manager *createManagerFromLoadedAddressSpace(
 }
 
 static rp_manager *_rp_manager_create_from_address_space(
-    const rp_address_space_callbacks *callbacks,
+    const rp_address_space_callbacks *callbacks, const char *pipeline,
     uint64_t materialize_for_serialization, uint64_t pipeline_flags_count,
     const char *pipeline_flags[], const char *execution_directory,
     rp_error *error) {
@@ -655,7 +677,7 @@ static rp_manager *_rp_manager_create_from_address_space(
   }
 
   return createManagerFromLoadedAddressSpace(
-      std::move(*Loaded), std::move(Provider), pipeline_flags_count,
+      std::move(*Loaded), std::move(Provider), pipeline, pipeline_flags_count,
       pipeline_flags, execution_directory, error);
 }
 
@@ -694,7 +716,7 @@ static rp_manager *_rp_manager_create_from_file_address_space(
       nullptr,          nullptr,          releaseFileAddressSpace};
   Context.release();
   return _rp_manager_create_from_address_space(
-      &Callbacks, materialize_for_serialization, pipeline_flags_count,
+      &Callbacks, nullptr, materialize_for_serialization, pipeline_flags_count,
       pipeline_flags, execution_directory, error);
 }
 

@@ -831,7 +831,16 @@ void DetectABI::recordRegisters(const efa::CSVSet &CSVs, auto Inserter) {
     namespace PK = model::PrimitiveKind;
     auto Type = model::PrimitiveType::makeNextPowerOfTwo(PK::Generic,
                                                          ByteCount);
-    revng_assert(model::Register::getSize(Register) >= *Type->size());
+
+    // Rounding to a power of two overshoots a register whose size is not one
+    // -- x87's 10-byte `st0`. Describe it with its own kind at its exact
+    // size instead: a float primitive may be 10 or 12 bytes.
+    uint64_t RegisterSize = model::Register::getSize(Register);
+    if (*Type->size() > RegisterSize) {
+      auto Kind = model::Register::getPrimitiveKind(Register);
+      Type = model::PrimitiveType::make(Kind, RegisterSize);
+    }
+    revng_assert(RegisterSize >= *Type->size());
 
     Inserter.emplace(Register).Type() = std::move(Type);
   }

@@ -59,6 +59,9 @@ bool PostLiftVerifyPass::runOnModule(Module &M) {
       case Instruction::AShr:
       case Instruction::Shl:
       case Instruction::Select:
+      // InstCombine introduces this to stop poison propagating, and both the
+      // Clifter and ArithmeticToGEP already handle it.
+      case Instruction::Freeze:
         Good = true;
         break;
 

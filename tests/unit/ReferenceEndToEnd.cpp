@@ -80,7 +80,8 @@ BOOST_AUTO_TEST_CASE(IsolateThroughEmitC) {
   std::unique_ptr<rp_error, decltype(&rp_error_destroy)> Error(
       rp_error_create(), rp_error_destroy);
   std::unique_ptr<rp_manager, decltype(&rp_manager_destroy)> Manager(
-      rp_manager_create_from_address_space(&Callbacks, 0, 0, nullptr, "",
+      rp_manager_create_from_address_space(&Callbacks, nullptr, 0, 0, nullptr,
+                                           "",
                                            Error.get()),
       rp_manager_destroy);
   if (Manager == nullptr)
