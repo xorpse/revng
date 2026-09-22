@@ -90,6 +90,7 @@ int main(int argc, char **argv) {
                                            NULL };
   rp_error *error = rp_error_create();
   rp_manager *manager = rp_manager_create_from_address_space(&callbacks,
+                                                             NULL,
                                                              0,
                                                              0,
                                                              NULL,

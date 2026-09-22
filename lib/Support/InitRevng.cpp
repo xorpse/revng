@@ -21,13 +21,22 @@ revng::InitRevng::InitRevng(int &Argc,
                             char **&Argv,
                             const char *Overview,
                             llvm::ArrayRef<const llvm::cl::OptionCategory *>
-                              CategoriesToHide) :
+                              CategoriesToHide,
+                            bool ExitOnFailure) :
   InitLLVM(Argc, Argv, true) {
 
+  auto Fail = [this, ExitOnFailure](std::string Message) {
+    if (ExitOnFailure) {
+      dbg << Message << "\n";
+      std::exit(EXIT_FAILURE);
+    }
+    Initialized = false;
+    Failure = std::move(Message);
+  };
+
   if (auto Error = revng::Configuration::reload()) {
-    std::string Message = llvm::toString(std::move(Error));
-    dbg << "Failed to parse configuration. " << Message << "\n";
-    std::exit(EXIT_FAILURE);
+    Fail("Failed to parse configuration. " + llvm::toString(std::move(Error)));
+    return;
   }
 
   revng_assert(not Initialized);
@@ -62,8 +71,10 @@ revng::InitRevng::InitRevng(int &Argc,
                                                   Arguments.data(),
                                                   Overview);
 
-  if (not Result)
-    std::exit(EXIT_FAILURE);
+  if (not Result) {
+    Fail("Failed to parse the command-line options");
+    return;
+  }
 
   // Force-enable `--enable-strict-debug-information-preservation-style` for
   // revng binaries even if it wasn't specified.

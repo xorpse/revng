@@ -115,7 +115,7 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
                                           releaseAddressSpace};
   rp_error Error;
   rp_manager *Manager = rp_manager_create_from_address_space(
-      &AddressSpace, 1, 0, nullptr, "", &Error);
+      &AddressSpace, nullptr, 1, 0, nullptr, "", &Error);
   if (Manager == nullptr) {
     if (auto *Simple = std::get_if<rp_simple_error>(&Error))
       llvm::errs() << "manager creation failed: " << Simple->Message << "\n";
@@ -298,8 +298,8 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
   State.LifterCalled = false;
   State.ReadCalls = 0;
   State.ReleaseCalls = 0;
-  Manager = rp_manager_create_from_address_space(&AddressSpace, 0, 0, nullptr,
-                                                 "", &Error);
+  Manager = rp_manager_create_from_address_space(&AddressSpace, nullptr, 0, 0,
+                                                 nullptr, "", &Error);
   BOOST_REQUIRE(Manager != nullptr);
   BOOST_CHECK(State.ReadCalls == 0U);
   BOOST_CHECK(State.ReleaseCalls == 0U);
@@ -329,8 +329,8 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
 
   State.ReadCalls = 0;
   State.ReleaseCalls = 0;
-  Manager = rp_manager_create_from_address_space(&AddressSpace, 1, 0, nullptr,
-                                                 "", &Error);
+  Manager = rp_manager_create_from_address_space(&AddressSpace, nullptr, 1, 0,
+                                                 nullptr, "", &Error);
   BOOST_REQUIRE(Manager != nullptr);
   BOOST_CHECK(State.ReadCalls == 1U);
   BOOST_CHECK(State.ReleaseCalls == 1U);
