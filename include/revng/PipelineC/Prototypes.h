@@ -78,18 +78,18 @@
  *
  * \return true if the initialization was successful.
  */
-bool rp_initialize(int argc, const char *argv[],
+bool rp_initialise(int argc, const char *argv[],
                    uint32_t signals_to_preserve_count,
                    int signals_to_preserve[]);
 
 /**
- * \return true if rp_initialize has already run in this process. An embedder
+ * \return true if rp_initialise has already run in this process. An embedder
  *         shares the process with its host, so it cannot assume it is the one
  *         that initialized the pipeline.
  */
-bool rp_is_initialized();
-LENGTH_HINT(rp_initialize, 1, 0)
-LENGTH_HINT(rp_initialize, 3, 2)
+bool rp_is_initialised();
+LENGTH_HINT(rp_initialise, 1, 0)
+LENGTH_HINT(rp_initialise, 3, 2)
 
 /**
  * Should be called on clean exit to clean up all LLVM-related stuff used by
@@ -141,7 +141,7 @@ LENGTH_HINT(rp_manager_create_from_string, 3, 2)
 
 /**
  * Create a manager backed by range-read callbacks. When
- * materialize_for_serialization is false, bytes are fetched and cached on
+ * materialise_for_serialisation is false, bytes are fetched and cached on
  * demand and callbacks remain alive until manager destruction. When true, all
  * backed bytes are read during this call and the callback is released before
  * returning, producing an ordinary serializable manager.
@@ -149,7 +149,7 @@ LENGTH_HINT(rp_manager_create_from_string, 3, 2)
 rp_manager * /*owning*/
 rp_manager_create_from_address_space(
     const rp_address_space_callbacks *callbacks, const char *pipeline,
-    uint64_t materialize_for_serialization, uint64_t pipeline_flags_count,
+    uint64_t materialise_for_serialisation, uint64_t pipeline_flags_count,
     const char *pipeline_flags[], const char *execution_directory,
     rp_error *error);
 LENGTH_HINT(rp_manager_create_from_address_space, 4, 3)
@@ -162,7 +162,7 @@ rp_manager * /*owning*/
 rp_manager_create_from_file_address_space(
     const char *architecture, const char *entry_point, uint64_t mappings_count,
     const rp_file_address_space_mapping mappings[],
-    uint64_t materialize_for_serialization, uint64_t pipeline_flags_count,
+    uint64_t materialise_for_serialisation, uint64_t pipeline_flags_count,
     const char *pipeline_flags[], const char *execution_directory,
     rp_error *error);
 LENGTH_HINT(rp_manager_create_from_file_address_space, 6, 5)
@@ -186,7 +186,7 @@ LENGTH_HINT(rp_binary_view_read_offset, 3, 2)
 LENGTH_HINT(rp_binary_view_read_address, 3, 2)
 
 /** Materialize a lazy manager's complete flattened address space. */
-bool rp_manager_materialize_address_space(rp_manager *manager, rp_error *error);
+bool rp_manager_materialise_address_space(rp_manager *manager, rp_error *error);
 
 /**
  * Select a registered lifter backend by name for this manager. This is the
@@ -308,11 +308,11 @@ rp_manager_decompile_function_to_c(rp_manager *manager, const char *address,
 
 /** Produce one pipeline artifact and return its extracted payload in memory. */
 rp_buffer * /*owning*/
-rp_manager_produce_artifact(rp_manager *manager, const char *step_name,
+rp_manager_produce_artefact(rp_manager *manager, const char *step_name,
                             const char *container_name, const char *kind_name,
                             uint64_t path_components_count,
                             const char *path_components[], rp_error *error);
-LENGTH_HINT(rp_manager_produce_artifact, 5, 4)
+LENGTH_HINT(rp_manager_produce_artefact, 5, 4)
 
 /**
  * Transactionally transform an LLVM or MLIR container. The module is borrowed
@@ -513,7 +513,7 @@ const char *rp_target_get_kind(const rp_target *target);
 /**
  * Serializes target into a string.
  */
-char * /*owning*/ rp_target_create_serialized_string(const rp_target *target);
+char * /*owning*/ rp_target_create_serialised_string(const rp_target *target);
 
 /**
  * \return the number of path component in \p target.
@@ -556,11 +556,11 @@ const char *rp_container_get_mime(const rp_container *container);
  *
  * \return false if a error was encountered, true otherwise
  */
-bool rp_manager_container_deserialize(rp_manager *manager, rp_step *step,
+bool rp_manager_container_deserialise(rp_manager *manager, rp_step *step,
                                       const char *container_name,
                                       const char *content, uint64_t size,
                                       rp_invalidations *invalidations);
-LENGTH_HINT(rp_manager_container_deserialize, 3, 4)
+LENGTH_HINT(rp_manager_container_deserialise, 3, 4)
 
 /**
  * \return the serialized content of the element associated to the provided
@@ -731,7 +731,7 @@ void rp_invalidations_destroy(rp_invalidations *invalidations);
  * \return a string where each line is a target that has been invalidated
  */
 char * /* owning */
-rp_invalidations_serialize(const rp_invalidations *invalidations);
+rp_invalidations_serialise(const rp_invalidations *invalidations);
 
 /** \} */
 
