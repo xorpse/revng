@@ -212,10 +212,14 @@ fromLLVMFunction(llvm::Function &F,
   // Note: we do not add to Preserve the entry block
 
   // Create edges
-  for (auto &[LLVMBlock, Node] : BlocksMap) {
-    for (llvm::BasicBlock *Successor : successors(LLVMBlock)) {
+  for (llvm::BasicBlock &LLVMBlock : F) {
+    auto It = BlocksMap.find(&LLVMBlock);
+    if (It == BlocksMap.end())
+      continue;
+
+    for (llvm::BasicBlock *Successor : successors(&LLVMBlock)) {
       revng_assert(BlocksMap.count(Successor) != 0);
-      Node->addSuccessor(BlocksMap[Successor]);
+      It->second->addSuccessor(BlocksMap[Successor]);
     }
   }
 

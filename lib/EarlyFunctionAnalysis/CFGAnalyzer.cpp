@@ -1145,7 +1145,7 @@ void CallSummarizer::handleCall(MetaAddress CallerBlock,
   Builder.CreateCall(PreCallHook, Args);
 
   // Emulate registers being clobbered
-  for (GlobalVariable *Register : ClobberedRegisters)
+  for (GlobalVariable *Register : toSortedByName(ClobberedRegisters))
     Clobberer.clobber(Builder, Register);
 
   // Adjust back the stack pointer
@@ -1188,7 +1188,7 @@ void CallSummarizer::handleIndirectJump(revng::IRBuilder &Builder,
                                           Builder.getTrue() });
 
     // Emulate registers being clobbered
-    for (GlobalVariable *Register : ClobberedRegisters)
+    for (GlobalVariable *Register : toSortedByName(ClobberedRegisters))
       Clobberer.clobber(Builder, Register);
 
     NewPostCallHook = Builder.CreateCall(PostCallHook,

@@ -18,7 +18,9 @@ using SingleLLVMFunctionsArgument = TypeList<
 
 inline RawBinaryView makeBinaryView(const Model &Model,
                                     const BinariesContainer &Binaries) {
-  llvm::ArrayRef<char> BinaryBuffer = Binaries.getFile(0);
+  llvm::ArrayRef<char> BinaryBuffer;
+  if (Binaries.size() != 0)
+    BinaryBuffer = Binaries.getFile(0);
   return RawBinaryView(*Model.get().get(),
                        llvm::StringRef{ BinaryBuffer.data(),
                                         BinaryBuffer.size() });

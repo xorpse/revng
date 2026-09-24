@@ -108,6 +108,9 @@ bool SegmentUsesEnumerator::shouldSkip(Use &TheUse) {
     return true;
   }
 
+  if (Opcode == llvm::Instruction::Trunc)
+    return true;
+
   return false;
 }
 

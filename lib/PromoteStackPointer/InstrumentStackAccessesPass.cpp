@@ -43,7 +43,13 @@ public:
     if (SP0 == nullptr)
       return;
 
-    for (Instruction *I : StackMemoryAccesses)
+    llvm::SmallVector<Instruction *, 16> Ordered;
+    for (BasicBlock &BB : F)
+      for (Instruction &I : BB)
+        if (StackMemoryAccesses.contains(&I))
+          Ordered.push_back(&I);
+
+    for (Instruction *I : Ordered)
       instrumentStackAccess(I);
   }
 

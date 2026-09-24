@@ -300,7 +300,14 @@ void DetectABI::computeApproximateCallGraph() {
   BasicBlockNode *RootNode = ApproximateCallGraph.addNode(MetaAddress());
   ApproximateCallGraph.setEntryNode(RootNode);
 
+  llvm::SmallVector<BasicBlockNode *, 16> Nodes;
   for (const auto &[_, Node] : BasicBlockNodeMap)
+    Nodes.push_back(Node);
+  llvm::sort(Nodes, [](const BasicBlockNode *L, const BasicBlockNode *R) {
+    return L->Address < R->Address;
+  });
+
+  for (BasicBlockNode *Node : Nodes)
     RootNode->addSuccessor(Node);
 
   // Dump the call-graph, if requested
@@ -676,7 +683,7 @@ Changes DetectABI::analyzeFunctionABI(const model::Function &Function,
     auto *BB = Call->getParent();
     if (IsPreHook) {
       Builder.SetInsertPoint(Call);
-      for (auto *CSV : ABIResults.ArgumentsRegisters) {
+      for (auto *CSV : toSortedByName(ABIResults.ArgumentsRegisters)) {
         // Inject a virtual read of the arguments of the callee
         // TODO: drop const_cast. Unfortunately it requires a significant
         //       refactoring.
@@ -690,7 +697,7 @@ Changes DetectABI::analyzeFunctionABI(const model::Function &Function,
       BB->splitBasicBlockBefore(Call->getNextNode());
 
       Builder.SetInsertPoint(BB, BB->getFirstInsertionPt());
-      for (auto *CSV : ABIResults.ReturnValuesRegisters) {
+      for (auto *CSV : toSortedByName(ABIResults.ReturnValuesRegisters)) {
         // Inject a virtual write to the return values of the callee
         // TODO: drop const_cast. Unfortunately it requires a significant
         //       refactoring.
@@ -850,7 +857,7 @@ void DetectABI::finalizeModel() {
   using namespace model;
 
   // Fill up the model and build its prototype for each function
-  std::set<model::Function *> Functions;
+  std::vector<model::Function *> Functions;
   for (model::Function &Function : Binary->Functions()) {
     // Ignore if we already have a prototype
     if (not Function.Prototype().isEmpty())
@@ -884,7 +891,7 @@ void DetectABI::finalizeModel() {
     Prototype.FinalStackOffset() = Summary.ElectedFSO.value_or(0);
 
     Function.Prototype() = std::move(NewType);
-    Functions.insert(&Function);
+    Functions.push_back(&Function);
   }
 
   // Build prototype for indirect function calls
@@ -1261,10 +1268,10 @@ Changes DetectABI::runAnalyses(MetaAddress EntryAddress,
       RUAResults &ToAdjust = Summary->ABIResults;
 
       for (auto *CSV : CallSite.ArgumentsRegisters)
-        Changed = Changed or ToAdjust.ArgumentsRegisters.insert(CSV).second;
+        Changed = ToAdjust.ArgumentsRegisters.insert(CSV).second or Changed;
 
       for (auto *CSV : CallSite.ReturnValuesRegisters)
-        Changed = Changed or ToAdjust.ReturnValuesRegisters.insert(CSV).second;
+        Changed = ToAdjust.ReturnValuesRegisters.insert(CSV).second or Changed;
 
       if (Changed and Callee.isValid())
         Changes.Callees.insert(Callee);

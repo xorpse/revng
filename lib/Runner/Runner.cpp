@@ -500,7 +500,10 @@ llvm::Error Runner::runAnalysis(llvm::StringRef Name,
     native::Container *Container = Containers.find(Declaration);
     if (Binding->Node != nullptr) {
       const PipelineNode *Node = Binding->Node;
-      while (Node != nullptr and not Node->isSavepoint())
+      while (Node != nullptr
+             and (not Node->isSavepoint()
+                  or not llvm::is_contained(Node->savepoint().ToSave,
+                                            Declaration)))
         Node = Node->Predecessor;
 
       if (Node != nullptr) {

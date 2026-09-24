@@ -410,6 +410,8 @@ branches:
   clift-functions:
     from: segregate-stack-accesses
     tasks:
+      - pipe: emit-string-constants
+        arguments: [binaries-container, llvm-functions]
       - pipe: pure-llvm-passes-pipe
         arguments: [llvm-functions]
         configuration:

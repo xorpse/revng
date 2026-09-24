@@ -1538,7 +1538,16 @@ void SegregateFunctionStack::runDataFlowAnalysis() {
 void SegregateFunctionStack::lowerCallSites() {
   revng_log(Log, "Handling call sites");
   LoggerIndent Indent(Log);
-  for (auto &[SSACSCall, CallSite] : CallSites) {
+
+  llvm::SmallVector<llvm::CallInst *, 16> Ordered;
+  for (llvm::BasicBlock &BB : *NewFunction)
+    for (llvm::Instruction &I : BB)
+      if (auto *Call = llvm::dyn_cast<llvm::CallInst>(&I);
+          Call != nullptr and CallSites.contains(Call))
+        Ordered.push_back(Call);
+
+  for (llvm::CallInst *SSACSCall : Ordered) {
+    auto &CallSite = CallSites.at(SSACSCall);
     revng_log(Log, "Handling " << getName(SSACSCall));
     LoggerIndent Indent(Log);
 
