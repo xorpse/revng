@@ -6,6 +6,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "llvm/ADT/StringMap.h"
@@ -44,17 +45,27 @@ public:
   }
 
 public:
+  /// One object to read out of the live containers once the run reaches
+  /// `Target`, for a node storage holds nothing for.
+  struct Capture {
+    size_t Declaration = 0;
+    ObjectID Object;
+    std::optional<revng::pypeline::Buffer> Result;
+  };
+
   /// Run whatever is needed so that `Wanted` is available at `Target`.
-  llvm::Error produce(const PipelineNode *Target, const Requests &Wanted);
+  llvm::Error produce(const PipelineNode *Target,
+                      const Requests &Wanted,
+                      Capture *ToCapture = nullptr);
 
   /// Produce a single object and return its serialised bytes.
   llvm::Expected<revng::pypeline::Buffer>
   produceOne(const PipelineNode *Target, size_t Declaration,
              const ObjectID &Object);
 
-  /// Produce a named artifact, for every object it can offer.
+  /// Produce a named artefact, for every object it can offer.
   llvm::Expected<revng::pypeline::Buffer>
-  produceArtifact(llvm::StringRef ArtifactName, const ObjectID &Object);
+  produceArtefact(llvm::StringRef ArtefactName, const ObjectID &Object);
 
   /// Run a named analysis, which may mutate the model.
   llvm::Error runAnalysis(llvm::StringRef Name,
@@ -99,7 +110,8 @@ private:
   llvm::Expected<std::vector<ScheduledTask>>
   schedule(const PipelineNode *Target, const Requests &Wanted);
 
-  llvm::Error runSchedule(llvm::ArrayRef<ScheduledTask> Tasks);
+  llvm::Error runSchedule(llvm::ArrayRef<ScheduledTask> Tasks,
+                          Capture *ToCapture);
 
   /// What a task must read in order to produce `Wanted`.
   llvm::Expected<Requests> prerequisitesFor(const PipelineNode *Node,

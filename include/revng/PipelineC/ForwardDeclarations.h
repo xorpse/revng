@@ -48,7 +48,7 @@ typedef RawBinaryView rp_binary_view;
 // a closed set of three values, so a handle is a pointer into a static table.
 typedef const Kind rp_kind;
 
-// A step is a point in the pipeline. Savepoints and artifacts both name one.
+// A step is a point in the pipeline. Savepoints and artefacts both name one.
 typedef const revng::runner::PipelineNode rp_step;
 
 // A container is identified by its declaration, and reached at a step.

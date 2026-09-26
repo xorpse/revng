@@ -162,19 +162,8 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
   BOOST_CHECK(Prototype->ABI() == model::ABI::SystemV_x86_64);
   BOOST_CHECK(Prototype->Arguments().size() == 2U);
 
-  // `lift` used to be a pipeline step; the point that holds the lifted module
-  // is now the savepoint named after it.
-  rp_step *LiftStep = rp_manager_get_step_from_name(Manager, "lifted");
-  const rp_container_identifier *RootIdentifier =
-      rp_manager_get_container_identifier_from_name(Manager, "llvm-root");
-  rp_container *RootContainer = rp_step_get_container(LiftStep, RootIdentifier);
-  // Kinds are now the three granularities, not one per pipeline stage.
-  const rp_kind *RootKind = rp_manager_get_kind_from_name(Manager, "binary");
-  const char *NoPath[] = {nullptr};
-  rp_target *RootTarget = rp_target_create(RootKind, 0, NoPath);
-  const rp_target *Targets[] = {RootTarget};
-  rp_buffer *LiftedModule = rp_manager_produce_targets(
-      Manager, LiftStep, RootContainer, 1, Targets, &Error);
+  rp_buffer *LiftedModule = rp_manager_produce_artefact(Manager, "lift",
+                                                       nullptr, &Error);
   if (LiftedModule == nullptr) {
     if (auto *Simple = std::get_if<rp_simple_error>(&Error))
       llvm::errs() << "lifting failed: " << Simple->Message << "\n";
@@ -182,7 +171,6 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
   BOOST_REQUIRE(LiftedModule != nullptr);
   BOOST_CHECK(rp_buffer_size(LiftedModule) != 0U);
   rp_buffer_destroy(LiftedModule);
-  rp_target_destroy(RootTarget);
 
   bool TransformCalled = false;
   const rp_llvm_module_callbacks TransformCallbacks{&TransformCalled,
@@ -193,8 +181,7 @@ BOOST_AUTO_TEST_CASE(CreateManagerAndSetLifter) {
       Manager, "lifted", "llvm-root", nullptr, &TransformCallbacks, &Error));
   BOOST_CHECK(TransformCalled);
   std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)> TransformedModule(
-      rp_manager_produce_artefact(Manager, "lifted", "llvm-root", "binary", 0,
-                                  nullptr, &Error),
+      rp_manager_produce_artefact(Manager, "lift", nullptr, &Error),
       rp_buffer_destroy);
   BOOST_REQUIRE(TransformedModule != nullptr);
   BOOST_CHECK(rp_buffer_size(TransformedModule.get()) != 0U);

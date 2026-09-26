@@ -95,25 +95,9 @@ BOOST_AUTO_TEST_CASE(IsolateThroughEmitC) {
   BOOST_REQUIRE(rp_manager_set_lifter_backend(Manager.get(), "reference-x86_64",
                                               Error.get()));
 
-  // `emit-c` is now the savepoint the per-function C lands at, the container
-  // is named after the artifact, and kinds are the three granularities.
-  rp_step *Step = rp_manager_get_step_from_name(Manager.get(), "emit-c");
-  const rp_container_identifier *Identifier =
-      rp_manager_get_container_identifier_from_name(Manager.get(),
-                                                    "decompile-c");
-  const rp_kind *Kind = rp_manager_get_kind_from_name(Manager.get(),
-                                                      "function");
-  BOOST_REQUIRE(Step != nullptr);
-  BOOST_REQUIRE(Identifier != nullptr);
-  BOOST_REQUIRE(Kind != nullptr);
-  rp_container *Container = rp_step_get_container(Step, Identifier);
-  const char *Path[] = {Space.Entry.c_str()};
-  std::unique_ptr<rp_target, decltype(&rp_target_destroy)> Target(
-      rp_target_create(Kind, 1, Path), rp_target_destroy);
-  const rp_target *Targets[] = {Target.get()};
   std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)> Output(
-      rp_manager_produce_targets(Manager.get(), Step, Container, 1, Targets,
-                                 Error.get()),
+      rp_manager_produce_artefact(Manager.get(), "emit-c",
+                                  Space.Entry.c_str(), Error.get()),
       rp_buffer_destroy);
   if (Output == nullptr)
     printError(Error.get());
@@ -137,14 +121,13 @@ BOOST_AUTO_TEST_CASE(IsolateThroughEmitC) {
   BOOST_CHECK(C.contains("int32_t add(int32_t a, int32_t b)"));
   BOOST_CHECK(not C.contains("<div"));
 
-  std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)> DirectArtifact(
+  std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)> DirectArtefact(
       rp_manager_produce_artefact(Manager.get(), "emit-c-as-single-file",
-                                  "decompiled-single-file", "binary", 0,
                                   nullptr, Error.get()),
       rp_buffer_destroy);
-  BOOST_REQUIRE(DirectArtifact != nullptr);
-  llvm::StringRef DirectPTML(rp_buffer_data(DirectArtifact.get()),
-                             rp_buffer_size(DirectArtifact.get()));
+  BOOST_REQUIRE(DirectArtefact != nullptr);
+  llvm::StringRef DirectPTML(rp_buffer_data(DirectArtefact.get()),
+                             rp_buffer_size(DirectArtefact.get()));
   BOOST_CHECK(DirectPTML.contains("add"));
 
   std::unique_ptr<rp_buffer, decltype(&rp_buffer_destroy)> Bundle(

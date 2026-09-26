@@ -91,7 +91,7 @@ struct PipelineNode {
 };
 
 /// A named output: the container to read, at the node that produced it.
-struct Artifact {
+struct Artefact {
   std::string Name;
   std::string Description;
   std::string Category;
@@ -115,7 +115,7 @@ public:
   std::vector<ContainerDeclaration> Declarations;
   /// Owns every node; `Root` and the pointers in the nodes point into this.
   std::vector<std::unique_ptr<PipelineNode>> Nodes;
-  llvm::StringMap<Artifact> Artifacts;
+  llvm::StringMap<Artefact> Artefacts;
   llvm::StringMap<AnalysisBinding> Analyses;
   llvm::StringMap<std::vector<std::string>> AnalysisLists;
 
@@ -130,10 +130,10 @@ public:
   std::optional<size_t> findDeclaration(llvm::StringRef Name) const;
   /// The savepoint with this name, if any.
   const PipelineNode *findSavepoint(llvm::StringRef Name) const;
-  const Artifact *findArtifact(llvm::StringRef Name) const;
+  const Artefact *findArtefact(llvm::StringRef Name) const;
   const AnalysisBinding *findAnalysis(llvm::StringRef Name) const;
 
-  /// The node an artifact or savepoint of this name resolves to. An empty name
+  /// The node an artefact or savepoint of this name resolves to. An empty name
   /// is the pipeline root, which is how the top-level analyses are addressed.
   const PipelineNode *resolveNode(llvm::StringRef Name) const;
 };

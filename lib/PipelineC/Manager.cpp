@@ -139,8 +139,8 @@ const std::string &Manager::serializedDescription() {
     for (const runner::ContainerDeclaration &D : Description.Declarations)
       Stream << "  - name: " << D.Name << "\n    type: " << D.TypeName << "\n";
 
-    Stream << "artifacts:\n";
-    for (const auto &Entry : Description.Artifacts)
+    Stream << "artefacts:\n";
+    for (const auto &Entry : Description.Artefacts)
       Stream << "  - name: " << Entry.first() << "\n    container: "
              << Description.Declarations[Entry.second.Declaration].Name
              << "\n";

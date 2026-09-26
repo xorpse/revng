@@ -342,7 +342,7 @@ static void runnerImplementation(std::function<ReturnT(Args...)> Function,
 
     // Check return value for integral return types
     if constexpr (anyOf<ReturnT, uint8_t, uint32_t, uint64_t>()) {
-      // Artifact generation is not stable, rp_buffer_size will, for sure,
+      // Artefact generation is not stable, rp_buffer_size will, for sure,
       // report a different size on different runs
       if constexpr (std::string_view(Name) != "rp_buffer_size") {
         softAssert(Context,

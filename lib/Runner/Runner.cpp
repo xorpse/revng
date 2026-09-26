@@ -276,7 +276,8 @@ Runner::schedule(const PipelineNode *Target, const Requests &Wanted) {
   return Reversed;
 }
 
-llvm::Error Runner::runSchedule(llvm::ArrayRef<ScheduledTask> Tasks) {
+llvm::Error Runner::runSchedule(llvm::ArrayRef<ScheduledTask> Tasks,
+                                Capture *ToCapture) {
   using namespace revng::pypeline::helpers::native;
 
   ContainerSet Containers;
@@ -393,10 +394,21 @@ llvm::Error Runner::runSchedule(llvm::ArrayRef<ScheduledTask> Tasks) {
     }
   }
 
+  if (ToCapture != nullptr) {
+    if (native::Container *C = Containers.find(ToCapture->Declaration)) {
+      std::map<ObjectID, revng::pypeline::Buffer> Serialised =
+        C->serialize({ ToCapture->Object });
+      if (auto It = Serialised.find(ToCapture->Object); It != Serialised.end())
+        ToCapture->Result = std::move(It->second);
+    }
+  }
+
   return llvm::Error::success();
 }
 
-llvm::Error Runner::produce(const PipelineNode *Target, const Requests &Wanted) {
+llvm::Error Runner::produce(const PipelineNode *Target,
+                            const Requests &Wanted,
+                            Capture *ToCapture) {
   if (Target == nullptr)
     return revng::createError("no such step in the pipeline");
 
@@ -404,7 +416,7 @@ llvm::Error Runner::produce(const PipelineNode *Target, const Requests &Wanted) 
   if (not Tasks)
     return Tasks.takeError();
 
-  return runSchedule(*Tasks);
+  return runSchedule(*Tasks, ToCapture);
 }
 
 llvm::Expected<revng::pypeline::Buffer>
@@ -422,38 +434,43 @@ Runner::produceOne(const PipelineNode *Target,
   Requests Wanted;
   Wanted.set(Declaration, ObjectSet(*TheKind, { Object }));
 
-  if (llvm::Error Error = produce(Target, Wanted))
+  bool HeldBySavepoint = Target->isSavepoint()
+                         and llvm::is_contained(Target->savepoint().ToSave,
+                                                Declaration);
+
+  Capture Captured{ Declaration, Object, {} };
+  Capture *ToCapture = HeldBySavepoint ? nullptr : &Captured;
+  if (llvm::Error Error = produce(Target, Wanted, ToCapture))
     return std::move(Error);
 
-  // `produce` leaves the result in storage only when it crossed a savepoint,
-  // so re-run against a set that includes this node to read it back.
-  const PipelineNode *Node = Target;
-  while (Node != nullptr and not Node->isSavepoint())
-    Node = Node->Predecessor;
+  if (not HeldBySavepoint) {
+    if (not Captured.Result.has_value())
+      return revng::createError("the pipeline produced no data for the "
+                                "requested object");
 
-  if (Node == nullptr)
-    return revng::createError("no savepoint holds the requested object");
+    return std::move(*Captured.Result);
+  }
 
-  ContainerLocation Location{ Node->Id, Declaration };
+  ContainerLocation Location{ Target->Id, Declaration };
   ObjectSet One(*TheKind, { Object });
-  auto Stored = Storage.get(Location, One);
-  if (Stored.empty())
+  auto Held = Storage.get(Location, One);
+  if (Held.empty())
     return revng::createError("the pipeline produced no data for the requested "
                               "object");
 
   revng::pypeline::Buffer Result;
-  llvm::ArrayRef<char> Data = Stored.begin()->second;
+  llvm::ArrayRef<char> Data = Held.begin()->second;
   Result.data().assign(Data.begin(), Data.end());
   return Result;
 }
 
 llvm::Expected<revng::pypeline::Buffer>
-Runner::produceArtifact(llvm::StringRef ArtifactName, const ObjectID &Object) {
-  const Artifact *TheArtifact = Description.findArtifact(ArtifactName);
-  if (TheArtifact == nullptr)
-    return revng::createError("no such artifact `" + ArtifactName.str() + "`");
+Runner::produceArtefact(llvm::StringRef ArtefactName, const ObjectID &Object) {
+  const Artefact *TheArtefact = Description.findArtefact(ArtefactName);
+  if (TheArtefact == nullptr)
+    return revng::createError("no such artefact `" + ArtefactName.str() + "`");
 
-  return produceOne(TheArtifact->Node, TheArtifact->Declaration, Object);
+  return produceOne(TheArtefact->Node, TheArtefact->Declaration, Object);
 }
 
 llvm::Error Runner::runAnalysis(llvm::StringRef Name,

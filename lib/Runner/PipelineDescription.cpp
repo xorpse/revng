@@ -130,9 +130,9 @@ PipelineDescription::findSavepoint(llvm::StringRef Name) const {
   return nullptr;
 }
 
-const Artifact *PipelineDescription::findArtifact(llvm::StringRef Name) const {
-  auto It = Artifacts.find(Name);
-  return It == Artifacts.end() ? nullptr : &It->second;
+const Artefact *PipelineDescription::findArtefact(llvm::StringRef Name) const {
+  auto It = Artefacts.find(Name);
+  return It == Artefacts.end() ? nullptr : &It->second;
 }
 
 const AnalysisBinding *
@@ -149,8 +149,8 @@ PipelineDescription::resolveNode(llvm::StringRef Name) const {
   if (const PipelineNode *Node = findSavepoint(Name))
     return Node;
 
-  if (const Artifact *TheArtifact = findArtifact(Name))
-    return TheArtifact->Node;
+  if (const Artefact *TheArtefact = findArtefact(Name))
+    return TheArtefact->Node;
 
   return nullptr;
 }
@@ -296,26 +296,26 @@ PipelineDescription::parse(llvm::StringRef YAML) {
       Result.Nodes.push_back(std::move(Node));
       Previous = Raw;
 
-      // Artifacts and analyses attach to the task they are declared under.
-      if (const Value *Artifacts = Task.find("artifacts");
-          Artifacts != nullptr and Artifacts->isSequence()) {
-        for (const Value &Entry : Artifacts->Sequence) {
-          Artifact TheArtifact;
-          TheArtifact.Name = Entry.string("name");
-          TheArtifact.Description = Entry.string("description");
-          TheArtifact.Category = Entry.string("category");
-          TheArtifact.Filename = Entry.string("filename");
-          TheArtifact.Node = Raw;
+      // Artefacts and analyses attach to the task they are declared under.
+      if (const Value *Artefacts = Task.find("artifacts");
+          Artefacts != nullptr and Artefacts->isSequence()) {
+        for (const Value &Entry : Artefacts->Sequence) {
+          Artefact TheArtefact;
+          TheArtefact.Name = Entry.string("name");
+          TheArtefact.Description = Entry.string("description");
+          TheArtefact.Category = Entry.string("category");
+          TheArtefact.Filename = Entry.string("filename");
+          TheArtefact.Node = Raw;
 
           llvm::Expected<size_t> Index = declarationIndex(Entry
                                                             .string("containe"
                                                                     "r"));
           if (not Index)
             return Index.takeError();
-          TheArtifact.Declaration = *Index;
+          TheArtefact.Declaration = *Index;
 
-          if (not TheArtifact.Name.empty())
-            Result.Artifacts[TheArtifact.Name] = std::move(TheArtifact);
+          if (not TheArtefact.Name.empty())
+            Result.Artefacts[TheArtefact.Name] = std::move(TheArtefact);
         }
       }
 

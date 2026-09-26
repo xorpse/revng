@@ -101,24 +101,7 @@ int main(int argc, char **argv) {
   if (!rp_manager_set_lifter_backend(manager, argv[1], error))
     goto destroy_manager;
 
-  rp_step *step = rp_manager_get_step_from_name(manager, "lifted");
-  const rp_container_identifier
-    *identifier = rp_manager_get_container_identifier_from_name(manager,
-                                                                "llvm-root");
-  const rp_kind *kind = rp_manager_get_kind_from_name(manager, "binary");
-  if (step == NULL || identifier == NULL || kind == NULL)
-    goto destroy_manager;
-  rp_container *container = rp_step_get_container(step, identifier);
-  const char *path[] = { NULL };
-  rp_target *target = rp_target_create(kind, 0, path);
-  const rp_target *targets[] = { target };
-  rp_buffer *module = rp_manager_produce_targets(manager,
-                                                 step,
-                                                 container,
-                                                 1,
-                                                 targets,
-                                                 error);
-  rp_target_destroy(target);
+  rp_buffer *module = rp_manager_produce_artefact(manager, "lift", NULL, error);
   if (module == NULL)
     goto destroy_manager;
 

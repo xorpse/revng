@@ -96,14 +96,14 @@ struct Fixture {
 
 } // namespace
 
-BOOST_AUTO_TEST_CASE(ProducesTheLiftArtifact) {
+BOOST_AUTO_TEST_CASE(ProducesTheLiftArtefact) {
   Fixture F;
   Runner TheRunner(F.Description, F.TheModel);
 
   // Pick the backend that needs no libtcg, so this runs everywhere.
   TheRunner.setDynamicConfiguration("lift", "backend: reference-x86_64\n");
 
-  auto Produced = TheRunner.produceArtifact("lift", ObjectID::root());
+  auto Produced = TheRunner.produceArtefact("lift", ObjectID::root());
   BOOST_REQUIRE_MESSAGE(bool(Produced),
                         "producing `lift` failed: "
                           << toString(Produced.takeError()));
@@ -114,7 +114,7 @@ BOOST_AUTO_TEST_CASE(ProducesTheLiftArtifact) {
   llvm::MemoryBufferRef Buffer({ Data.data(), Data.size() }, "lifted");
   auto Module = llvm::parseBitcodeFile(Buffer, Context);
   BOOST_REQUIRE_MESSAGE(bool(Module),
-                        "the artifact is not valid bitcode: "
+                        "the artefact is not valid bitcode: "
                           << toString(Module.takeError()));
 
   llvm::Function *Root = (*Module)->getFunction("root");
@@ -122,12 +122,48 @@ BOOST_AUTO_TEST_CASE(ProducesTheLiftArtifact) {
   BOOST_CHECK(FunctionTags::Root.isTagOf(Root));
 }
 
+BOOST_AUTO_TEST_CASE(ProducesMidBranch) {
+  Fixture F;
+  Runner TheRunner(F.Description, F.TheModel);
+  TheRunner.setDynamicConfiguration("lift", "backend: reference-x86_64\n");
+
+  const PipelineNode *Savepoint = F.Description.resolveNode("lifted");
+  BOOST_REQUIRE(Savepoint != nullptr);
+
+  const PipelineNode *MidBranch = Savepoint->Predecessor;
+  while (MidBranch != nullptr
+         and MidBranch->name() != "emit-segment-references")
+    MidBranch = MidBranch->Predecessor;
+  BOOST_REQUIRE(MidBranch != nullptr);
+
+  std::optional<size_t> Declaration = F.Description
+                                        .findDeclaration("llvm-root");
+  BOOST_REQUIRE(Declaration.has_value());
+
+  auto Produced = TheRunner.produceOne(MidBranch,
+                                       *Declaration,
+                                       ObjectID::root());
+  BOOST_REQUIRE_MESSAGE(bool(Produced),
+                        "producing at `"
+                          << MidBranch->name().str()
+                          << "` failed: " << toString(Produced.takeError()));
+
+  llvm::LLVMContext Context;
+  llvm::ArrayRef<char> Data = Produced->data();
+  llvm::MemoryBufferRef Buffer({ Data.data(), Data.size() }, "mid-branch");
+  auto Module = llvm::parseBitcodeFile(Buffer, Context);
+  BOOST_REQUIRE_MESSAGE(bool(Module),
+                        "the result is not valid bitcode: "
+                          << toString(Module.takeError()));
+  BOOST_CHECK((*Module)->getFunction("root") != nullptr);
+}
+
 BOOST_AUTO_TEST_CASE(SecondRequestIsServedFromStorage) {
   Fixture F;
   Runner TheRunner(F.Description, F.TheModel);
   TheRunner.setDynamicConfiguration("lift", "backend: reference-x86_64\n");
 
-  auto First = TheRunner.produceArtifact("lift", ObjectID::root());
+  auto First = TheRunner.produceArtefact("lift", ObjectID::root());
   BOOST_REQUIRE(bool(First));
 
   size_t AfterFirst = TheRunner.pipesRun();
@@ -135,7 +171,7 @@ BOOST_AUTO_TEST_CASE(SecondRequestIsServedFromStorage) {
 
   // Asking again must be served from the savepoint cache rather than by
   // re-running anything.
-  auto Second = TheRunner.produceArtifact("lift", ObjectID::root());
+  auto Second = TheRunner.produceArtefact("lift", ObjectID::root());
   BOOST_REQUIRE_MESSAGE(bool(Second),
                         "the second request failed: "
                           << toString(Second.takeError()));
@@ -152,7 +188,7 @@ BOOST_AUTO_TEST_CASE(InvalidationForcesARerun) {
   Runner TheRunner(F.Description, F.TheModel);
   TheRunner.setDynamicConfiguration("lift", "backend: reference-x86_64\n");
 
-  BOOST_REQUIRE(bool(TheRunner.produceArtifact("lift", ObjectID::root())));
+  BOOST_REQUIRE(bool(TheRunner.produceArtefact("lift", ObjectID::root())));
   const size_t AfterFirst = TheRunner.pipesRun();
 
   {
@@ -160,7 +196,7 @@ BOOST_AUTO_TEST_CASE(InvalidationForcesARerun) {
     F.TheModel.get()->PlatformName() = "unrelated-to-lifting";
     TheRunner.invalidate(Before.diff(F.TheModel).paths());
   }
-  BOOST_REQUIRE(bool(TheRunner.produceArtifact("lift", ObjectID::root())));
+  BOOST_REQUIRE(bool(TheRunner.produceArtefact("lift", ObjectID::root())));
   BOOST_CHECK_EQUAL(TheRunner.pipesRun(), AfterFirst);
 
   {
@@ -169,7 +205,7 @@ BOOST_AUTO_TEST_CASE(InvalidationForcesARerun) {
       MetaAddress::fromPC(model::Architecture::x86_64, 0x400002);
     TheRunner.invalidate(Before.diff(F.TheModel).paths());
   }
-  BOOST_REQUIRE(bool(TheRunner.produceArtifact("lift", ObjectID::root())));
+  BOOST_REQUIRE(bool(TheRunner.produceArtefact("lift", ObjectID::root())));
   BOOST_CHECK_GT(TheRunner.pipesRun(), AfterFirst);
 }
 
@@ -203,9 +239,9 @@ BOOST_AUTO_TEST_CASE(DecompilesToC) {
   BOOST_REQUIRE_MESSAGE(TheBinary->verify(true),
                         "the hand-built model does not verify");
 
-  BOOST_REQUIRE(bool(TheRunner.produceArtifact("lift", ObjectID::root())));
+  BOOST_REQUIRE(bool(TheRunner.produceArtefact("lift", ObjectID::root())));
 
-  auto Decompiled = TheRunner.produceArtifact("emit-c", ObjectID(Entry));
+  auto Decompiled = TheRunner.produceArtefact("emit-c", ObjectID(Entry));
   BOOST_REQUIRE_MESSAGE(bool(Decompiled),
                         "producing `emit-c` failed: "
                           << toString(Decompiled.takeError()));

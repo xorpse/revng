@@ -1758,78 +1758,22 @@ static void _rp_manager_destroy(rp_manager *manager) {
   delete manager;
 }
 
-static rp_step *_rp_manager_get_step_from_name(rp_manager *manager,
-                                               const char *name) {
-  revng_check(manager != nullptr);
-  revng_check(name != nullptr);
-  // A step used to be a pipeline stage; the nearest thing now is the point a
-  // savepoint or an artifact names. An empty name is the pipeline root, which
-  // is where the analyses that read no container are bound.
-  return manager->description().resolveNode(name);
-}
-
-static rp_container *
-_rp_step_get_container(rp_step *step, rp_container_identifier *container) {
-  revng_check(step != nullptr);
-  revng_check(container != nullptr);
-
-  // A container handle is the pair of the declaration and the point it is read
-  // at: the same declaration holds different content at different savepoints.
-  // Interning gives the caller a pointer that stays valid.
-  return internContainerHandle({ step, container->Index });
-}
-
 static uint64_t
 _rp_targets_list_targets_count(const rp_targets_list *targets_list) {
   revng_check(targets_list != nullptr);
   return targets_list->size();
 }
 
-static rp_kind *_rp_manager_get_kind_from_name(const rp_manager *manager,
-                                               const char *kind_name) {
+static rp_diff_map *_rp_manager_run_analysis(rp_manager *manager,
+                                             const char *analysis_name,
+                                             const rp_string_map *options,
+                                             rp_invalidations *invalidations,
+                                             rp_error *error) {
   revng_check(manager != nullptr);
-  revng_check(kind_name != nullptr);
-
-  // Three kinds, fixed. A handle is a pointer into a static table.
-  static const Kind Kinds[] = { ::Kinds::Binary,
-                                ::Kinds::Function,
-                                ::Kinds::TypeDefinition };
-  llvm::StringRef Name(kind_name);
-  if (Name == "binary")
-    return &Kinds[0];
-  if (Name == "function")
-    return &Kinds[1];
-  if (Name == "type-definition")
-    return &Kinds[2];
-  return nullptr;
-}
-
-static rp_diff_map *_rp_manager_run_analysis(
-    rp_manager *manager, const char *step_name, const char *analysis_name,
-    const rp_container_targets_map *target_map, const rp_string_map *options,
-    rp_invalidations *invalidations, rp_error *error) {
-  revng_check(manager != nullptr);
-  revng_check(step_name != nullptr);
   revng_check(analysis_name != nullptr);
-  // A null map means "every object the analysis is bound to", which is what
-  // the runner does anyway. Aborting on it would be gratuitous.
-  (void) target_map;
 
   ExistingOrNew<rp_invalidations> Invalidations(invalidations);
   ExistingOrNew<const rp_string_map> Options(options);
-
-  // Analyses are uniquely named across the pipeline, so the name alone
-  // resolves the binding and `step_name` is only checked for consistency.
-  if (llvm::StringRef(step_name).size() != 0) {
-    const AnalysisBinding *Binding = manager->description()
-                                       .findAnalysis(analysis_name);
-    if (Binding == nullptr) {
-      llvmErrorToRpError(revng::createError(std::string("no such analysis `")
-                                            + analysis_name + "`"),
-                         error);
-      return nullptr;
-    }
-  }
 
   Model Before = manager->model().clone();
 
@@ -1860,93 +1804,6 @@ static char *_rp_diff_map_get_diff(const rp_diff_map *map,
 
   llvm::SmallVector<char, 0> Serialized = map->serialize();
   return copyString(std::string(Serialized.begin(), Serialized.end()));
-}
-
-static rp_buffer *_rp_manager_produce_targets(
-    rp_manager *manager, const rp_step *step, const rp_container *container,
-    uint64_t targets_count, rp_target *targets[], rp_error *error) {
-  revng_check(manager != nullptr);
-  revng_check(step != nullptr);
-  revng_check(container != nullptr);
-  revng_check(targets_count != 0);
-  revng_check(targets != nullptr);
-
-  llvm::Expected<Kind> TheKind = manager->runner()
-                                   .kindOf(container->Declaration);
-  if (not TheKind) {
-    llvmErrorToRpError(TheKind.takeError(), error);
-    return nullptr;
-  }
-
-  ObjectSet Wanted(*TheKind);
-  for (size_t I = 0; I < targets_count; I++) {
-    if (targets[I]->Object.kind() != *TheKind) {
-      llvmErrorToRpError(revng::createError("target granularity does not match "
-                                            "the container"),
-                         error);
-      return nullptr;
-    }
-    Wanted.insert(targets[I]->Object);
-  }
-
-  Requests Request;
-  Request.set(container->Declaration, Wanted);
-
-  if (llvm::Error Failure = manager->runner().produce(step, Request)) {
-    llvmErrorToRpError(std::move(Failure), error);
-    return nullptr;
-  }
-
-  // The payload is a plain tar of `<object id>` members rather than the
-  // container's own serialisation, since a caller asking for a subset should
-  // not receive the whole container.
-  rp_buffer *Out = new rp_buffer();
-  {
-    llvm::raw_svector_ostream Stream(*Out);
-    revng::TarWriter Writer(Stream, revng::TarFormat::Plain);
-    for (const ObjectID &Object : Wanted) {
-      auto Produced = manager->runner().produceOne(step,
-                                                   container->Declaration,
-                                                   Object);
-      if (not Produced) {
-        delete Out;
-        llvmErrorToRpError(Produced.takeError(), error);
-        return nullptr;
-      }
-      Writer.addMember(Object.serialize(), Produced->data());
-    }
-  }
-
-  return Out;
-}
-
-static rp_target *_rp_target_create(const rp_kind *kind,
-                                    uint64_t path_components_count,
-                                    const char *path_components[]) {
-  revng_check(kind != nullptr);
-  revng_check(path_components != nullptr);
-  // Depth used to follow from the kind's rank. There are now two cases: the
-  // binary, which is the single root object, and everything else, which is
-  // named by one component.
-  if (*kind == ::Kinds::Binary) {
-    if (path_components_count != 0)
-      return nullptr;
-    return new TargetHandle{ ObjectID::root() };
-  }
-
-  if (path_components_count != 1 or path_components[0] == nullptr)
-    return nullptr;
-
-  std::optional<ObjectID> Object = objectFromKey(*kind, path_components[0]);
-  if (not Object.has_value())
-    return nullptr;
-
-  return new TargetHandle{ *Object };
-}
-
-static void _rp_target_destroy(rp_target *target) {
-  revng_check(target != nullptr);
-  delete target;
 }
 
 static bool _rp_manager_container_deserialise(
@@ -2059,18 +1916,6 @@ _rp_targets_list_get_target(const rp_targets_list *targets_list,
 static void _rp_string_destroy(char *string) {
   revng_check(string != nullptr);
   free(string);
-}
-
-static const rp_container_identifier *
-_rp_manager_get_container_identifier_from_name(const rp_manager *manager,
-                                               const char *name) {
-  revng_check(manager != nullptr);
-  revng_check(name != nullptr);
-
-  std::optional<size_t> Index = manager->description().findDeclaration(name);
-  if (not Index.has_value())
-    return nullptr;
-  return &manager->description().Declarations[*Index];
 }
 
 static char *_rp_target_create_serialised_string(rp_target *target) {
@@ -2313,24 +2158,6 @@ static void _rp_buffer_destroy(rp_buffer *buffer) {
   delete buffer;
 }
 
-static rp_container_targets_map *_rp_container_targets_map_create() {
-  return new ContainerTargetsMap();
-}
-
-static void _rp_container_targets_map_destroy(rp_container_targets_map *map) {
-  revng_check(map != nullptr);
-  delete map;
-}
-
-static void _rp_container_targets_map_add(rp_container_targets_map *map,
-                                          const rp_container *container,
-                                          const rp_target *target) {
-  revng_check(map != nullptr);
-  revng_check(container != nullptr);
-  revng_check(target != nullptr);
-  (*map)[*container].push_back(*target);
-}
-
 static const char *_rp_manager_get_pipeline_description(rp_manager *manager) {
   revng_check(manager != nullptr);
   // Serialised on demand and cached, since the caller gets a bare pointer.
@@ -2342,87 +2169,51 @@ static uint64_t _rp_manager_get_context_commit_index(rp_manager *manager) {
   return manager->commitIndex();
 }
 
-static std::unique_ptr<rp_buffer>
-produceArtifact(rp_manager &Manager, llvm::StringRef StepName,
-                llvm::StringRef ContainerName, llvm::StringRef KindName,
-                llvm::ArrayRef<const char *> PathComponents, rp_error *Error) {
-  const PipelineNode *Step = Manager.description().resolveNode(StepName);
-  if (Step == nullptr) {
-    llvmErrorToRpError(revng::createError("unknown pipeline step: " + StepName),
-                       Error);
+
+static rp_buffer *_rp_manager_produce_artefact(rp_manager *manager,
+                                               const char *artefact_name,
+                                               const char *object,
+                                               rp_error *error) {
+  revng_check(manager != nullptr);
+  revng_check(artefact_name != nullptr);
+
+  const Artefact *TheArtefact = manager->description()
+                                  .findArtefact(artefact_name);
+  if (TheArtefact == nullptr) {
+    llvmErrorToRpError(revng::createError(std::string("no such artefact `")
+                                          + artefact_name + "`"),
+                       error);
     return nullptr;
   }
 
-  std::optional<size_t> Declaration = Manager.description()
-                                        .findDeclaration(ContainerName);
-  if (not Declaration.has_value()) {
-    llvmErrorToRpError(revng::createError("unknown pipeline container: "
-                                          + ContainerName),
-                       Error);
-    return nullptr;
-  }
-
-  // The kind is now a property of the container rather than an independent
-  // axis, so the caller's name is only checked for agreement.
-  llvm::Expected<Kind> TheKind = Manager.runner().kindOf(*Declaration);
+  llvm::Expected<Kind> TheKind = manager->runner()
+                                   .kindOf(TheArtefact->Declaration);
   if (not TheKind) {
-    llvmErrorToRpError(TheKind.takeError(), Error);
+    llvmErrorToRpError(TheKind.takeError(), error);
     return nullptr;
   }
 
-  if (PathComponents.size() > 1) {
-    llvmErrorToRpError(revng::createError("artifact target path has the wrong "
-                                          "number of components"),
-                       Error);
+  llvm::StringRef Key = "";
+  if (*TheKind != Kinds::Binary and object != nullptr)
+    Key = object;
+
+  std::optional<ObjectID> TheObject = objectFromKey(*TheKind, Key);
+  if (not TheObject.has_value()) {
+    llvmErrorToRpError(revng::createError("the object does not name something "
+                                          "of the artefact's granularity"),
+                       error);
     return nullptr;
   }
 
-  llvm::StringRef Key;
-  if (PathComponents.size() == 1) {
-    if (PathComponents[0] == nullptr) {
-      llvmErrorToRpError(revng::createError("null artifact path component"),
-                         Error);
-      return nullptr;
-    }
-    Key = PathComponents[0];
-  }
-
-  std::optional<ObjectID> Object = objectFromKey(*TheKind, Key);
-  if (not Object.has_value()) {
-    llvmErrorToRpError(revng::createError("artifact target path does not name "
-                                          "an object of the container's kind"),
-                       Error);
-    return nullptr;
-  }
-
-  auto Produced = Manager.runner().produceOne(Step, *Declaration, *Object);
+  auto Produced = manager->runner().produceArtefact(artefact_name, *TheObject);
   if (not Produced) {
-    llvmErrorToRpError(Produced.takeError(), Error);
+    llvmErrorToRpError(Produced.takeError(), error);
     return nullptr;
   }
 
   auto Result = std::make_unique<rp_buffer>();
   Result->assign(Produced->data().begin(), Produced->data().end());
-  return Result;
-}
-
-static rp_buffer *
-_rp_manager_produce_artefact(rp_manager *manager, const char *step_name,
-                             const char *container_name, const char *kind_name,
-                             uint64_t path_components_count,
-                             const char *path_components[], rp_error *error) {
-  revng_check(manager != nullptr);
-  revng_check(step_name != nullptr);
-  revng_check(container_name != nullptr);
-  revng_check(kind_name != nullptr);
-  if (path_components_count != 0 and path_components == nullptr) {
-    llvmErrorToRpError(revng::createError("null artifact target path"), error);
-    return nullptr;
-  }
-  return produceArtifact(*manager, step_name, container_name, kind_name,
-                         {path_components, size_t(path_components_count)},
-                         error)
-      .release();
+  return Result.release();
 }
 
 /// Reach the LLVM module a container holds, whether it keeps one per object
@@ -2662,9 +2453,9 @@ static rp_buffer *decompilePTML(rp_manager *Manager, const char *Address,
                                 rp_error *Error) {
   const bool SingleFunction = Address != nullptr;
 
-  // One function comes from the per-function artifact; the whole binary from
-  // the single-file one. The names are the artifacts', not the containers'.
-  const char *ArtifactName = SingleFunction ? "emit-c" :
+  // One function comes from the per-function artefact; the whole binary from
+  // the single-file one. The names are the artefacts', not the containers'.
+  const char *ArtefactName = SingleFunction ? "emit-c" :
                                               "emit-c-as-single-file";
 
   ObjectID Object = ObjectID::root();
@@ -2680,7 +2471,7 @@ static rp_buffer *decompilePTML(rp_manager *Manager, const char *Address,
     Object = ObjectID(FunctionAddress);
   }
 
-  auto Produced = Manager->runner().produceArtifact(ArtifactName, Object);
+  auto Produced = Manager->runner().produceArtefact(ArtefactName, Object);
   if (not Produced) {
     llvmErrorToRpError(Produced.takeError(), Error);
     return nullptr;
@@ -2763,13 +2554,14 @@ static rp_buffer *_rp_manager_decompile_to_c_bundle(rp_manager *manager,
       _rp_manager_decompile_to_c(manager, error));
   if (not Functions)
     return nullptr;
-  std::unique_ptr<rp_buffer> TypesPTML = produceArtifact(
-      *manager, "emit-type-and-global-header", "type-and-global-header",
-      "binary", {}, error);
+  std::unique_ptr<rp_buffer> TypesPTML(
+      _rp_manager_produce_artefact(manager, "emit-type-and-global-header",
+                                   nullptr, error));
   if (not TypesPTML)
     return nullptr;
-  std::unique_ptr<rp_buffer> HelpersPTML = produceArtifact(
-      *manager, "emit-helper-header", "helper-header", "binary", {}, error);
+  std::unique_ptr<rp_buffer> HelpersPTML(
+      _rp_manager_produce_artefact(manager, "emit-helper-header", nullptr,
+                                   error));
   if (not HelpersPTML)
     return nullptr;
   std::unique_ptr<rp_buffer> Types = stripPTML(*TypesPTML);

@@ -38,7 +38,7 @@ BOOST_AUTO_TEST_CASE(ParsesTheShippedPipeline) {
                     "LLVMRootContainer");
 }
 
-BOOST_AUTO_TEST_CASE(ResolvesSavepointsAndArtifacts) {
+BOOST_AUTO_TEST_CASE(ResolvesSavepointsAndArtefacts) {
   PipelineDescription Description = parseShipped();
 
   for (llvm::StringRef Name : { "lifted", "segregate-stack-accesses" })
@@ -46,11 +46,11 @@ BOOST_AUTO_TEST_CASE(ResolvesSavepointsAndArtifacts) {
                         "missing savepoint: " << Name.str());
 
   for (llvm::StringRef Name : { "lift", "emit-c" })
-    BOOST_CHECK_MESSAGE(Description.findArtifact(Name) != nullptr,
-                        "missing artifact: " << Name.str());
+    BOOST_CHECK_MESSAGE(Description.findArtefact(Name) != nullptr,
+                        "missing artefact: " << Name.str());
 
-  // An artifact names both the node that produced it and the container to read.
-  const Artifact *Lift = Description.findArtifact("lift");
+  // An artefact names both the node that produced it and the container to read.
+  const Artefact *Lift = Description.findArtefact("lift");
   BOOST_REQUIRE(Lift != nullptr);
   BOOST_CHECK(Lift->Node != nullptr);
   BOOST_CHECK_EQUAL(Description.Declarations[Lift->Declaration].Name,
@@ -165,5 +165,5 @@ BOOST_AUTO_TEST_CASE(ParsesTheAddressSpacePipeline) {
   BOOST_CHECK(Parsed->findDeclaration("llvm-root").has_value());
   BOOST_CHECK(Parsed->findDeclaration("binaries-container").has_value());
   BOOST_CHECK(Parsed->findSavepoint("lifted") != nullptr);
-  BOOST_CHECK(Parsed->findArtifact("lift") != nullptr);
+  BOOST_CHECK(Parsed->findArtefact("lift") != nullptr);
 }

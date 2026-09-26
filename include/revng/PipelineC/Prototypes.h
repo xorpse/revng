@@ -291,7 +291,7 @@ uint64_t rp_manager_create_raw_function_type(
     const char *return_value_comment, rp_error *error);
 LENGTH_HINT(rp_manager_create_raw_function_type, 9, 8)
 
-/** Run the configured full pipeline and return the single-file C artifact. */
+/** Run the configured full pipeline and return the single-file C artefact. */
 rp_buffer * /*owning*/
 rp_manager_decompile_to_ptml(rp_manager *manager, rp_error *error);
 rp_buffer * /*owning*/
@@ -306,18 +306,25 @@ rp_buffer * /*owning*/
 rp_manager_decompile_function_to_c(rp_manager *manager, const char *address,
                                    rp_error *error);
 
-/** Produce one pipeline artifact and return its extracted payload in memory. */
+/**
+ * Produce one pipeline artefact and return its extracted payload in memory.
+ *
+ * \param artefact_name the name of the artefact, as the pipeline declares it.
+ * The artefact names the container and the point of the pipeline to take it
+ * from, so neither has to be passed.
+ * \param object the object to produce, NULL for the whole binary. Ignored
+ * for artefacts that are whole-binary anyway.
+ *
+ * \return nullptr if an error was encountered, the payload otherwise
+ */
 rp_buffer * /*owning*/
-rp_manager_produce_artefact(rp_manager *manager, const char *step_name,
-                            const char *container_name, const char *kind_name,
-                            uint64_t path_components_count,
-                            const char *path_components[], rp_error *error);
-LENGTH_HINT(rp_manager_produce_artefact, 5, 4)
+rp_manager_produce_artefact(rp_manager *manager, const char *artefact_name,
+                            const char *object /*nullable*/, rp_error *error);
 
 /**
  * Transactionally transform an LLVM or MLIR container. The module is borrowed
  * only for the callback. A successful callback is verified and committed;
- * failure leaves the pipeline unchanged. Downstream artifacts are invalidated.
+ * failure leaves the pipeline unchanged. Downstream artefacts are invalidated.
  *
  * \param object which object of the container to transform, as the key used
  *        elsewhere (for example "0x1000:Code_x86_64"). Containers that hold
@@ -344,24 +351,10 @@ bool rp_manager_transform_mlir_module(rp_manager *manager,
 void rp_manager_destroy(rp_manager *manager);
 
 /**
- * \param name the container name to fetch
- *
- * \return the container with the given name
- */
-const rp_container_identifier *
-rp_manager_get_container_identifier_from_name(const rp_manager *manager,
-                                              const char *name);
-
-/**
  *  Trigger the serialization of the pipeline on disk.
  *  \return false if there was an error while saving, true otherwise
  */
 bool rp_manager_save(rp_manager *manager);
-
-/**
- * \return the step with the provided name, or NULL if not such step existed.
- */
-rp_step *rp_manager_get_step_from_name(rp_manager *manager, const char *name);
 
 /**
  * \param global_name the name of the global
@@ -372,33 +365,12 @@ rp_manager_create_global_copy(const rp_manager *manager,
                               const char *global_name);
 
 /**
- * \return the kind with the provided name, NULL if no kind had the provided
- *         name.
- */
-const rp_kind *rp_manager_get_kind_from_name(const rp_manager *manager,
-                                             const char *kind_name);
-
-/**
- * Request the production of the provided targets in a particular container.
- *
- * \param tagets_count must be equal to the size of targets.
- *
- * \return 0 if an error was encountered, the serialized container otherwise
- */
-rp_buffer * /*owning*/
-rp_manager_produce_targets(rp_manager *manager, const rp_step *step,
-                           const rp_container *container,
-                           uint64_t targets_count, const rp_target *targets[],
-                           rp_error *error);
-LENGTH_HINT(rp_manager_produce_targets, 4, 3)
-
-/**
  * Request to run the required analysis
  *
- * \param targets the targets which the analysis will be run on
- * \param step_name the name of the step
- * \param analysis_name the name of the analysis in that step
- * \param container the container to operate on
+ * Analyses are uniquely named across the pipeline, and each runs on every
+ * object of the containers it is bound to.
+ *
+ * \param analysis_name the name of the analysis
  * \param invalidations see \ref pipelineC_invalidations
  * \param options key-value associative array of options to pass to the analysis
  * This option accepts nullptr in case there are no options to pass
@@ -407,9 +379,7 @@ LENGTH_HINT(rp_manager_produce_targets, 4, 3)
  * global objects otherwise
  */
 rp_diff_map * /*owning*/
-rp_manager_run_analysis(rp_manager *manager, const char *step_name,
-                        const char *analysis_name,
-                        const rp_container_targets_map *target_map,
+rp_manager_run_analysis(rp_manager *manager, const char *analysis_name,
                         const rp_string_map *options,
                         rp_invalidations *invalidations, rp_error *error);
 
@@ -471,39 +441,12 @@ rp_targets_list_get_target(const rp_targets_list *targets_list, uint64_t index);
  * \{
  */
 
-/**
- * \return the container associated to the provided \p identifier at the given
- *         \p step or nullptr if not present.
- */
-rp_container *rp_step_get_container(rp_step *step,
-                                    const rp_container_identifier *identifier);
-
 /** \} */
 
 /**
  * \defgroup rp_target rp_target methods
  * \{
  */
-
-/**
- * Create a target from the provided info.
- *
- * \param kind the kind of the target
- * \param is_exact if true only the kind specified is considedered, whereas if
- * false the kind and all its children are considered \param path_components a
- * list of strings containing the component of the target
- *
- * \return 0 if a error was encountered, 1 otherwise.
- */
-rp_target * /*owning*/ rp_target_create(const rp_kind *kind,
-                                        uint64_t path_components_count,
-                                        const char *path_components[]);
-LENGTH_HINT(rp_target_create, 2, 1)
-
-/**
- * Delete the provided target.
- */
-void rp_target_destroy(rp_target *target);
 
 /**
  * \return the kind of the provided target
@@ -761,24 +704,6 @@ void rp_buffer_destroy(rp_buffer *buffer);
  * \defgroup rp_container_targets_map rp_container_targets_map methods
  * \{
  */
-
-/**
- * Create a new rp_container_targets_map object
- * \return owning pointer to the newly created object
- */
-rp_container_targets_map * /*owning*/ rp_container_targets_map_create();
-
-/**
- * Free a rp_container_targets_map
- */
-void rp_container_targets_map_destroy(rp_container_targets_map *map);
-
-/**
- * Add the specified Target to the Container in the map
- */
-void rp_container_targets_map_add(rp_container_targets_map *map,
-                                  const rp_container *container,
-                                  const rp_target *target);
 
 /** \} */
 

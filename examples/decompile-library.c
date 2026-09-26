@@ -144,21 +144,18 @@ int main(int argc, char **argv) {
            || !contains(data, size, "int32_t add(int32_t a, int32_t b)");
   rp_buffer_destroy(decompiled);
 
-  rp_buffer *artifact = rp_manager_produce_artefact(manager,
+  rp_buffer *artefact = rp_manager_produce_artefact(manager,
                                                     "emit-c-as-single-file",
-                                                    "decompiled-single-file",
-                                                    "binary",
-                                                    0,
                                                     NULL,
                                                     error);
-  if (artifact == NULL) {
-    print_error("direct artifact production", error);
+  if (artefact == NULL) {
+    print_error("direct artefact production", error);
     result = 1;
     goto destroy_manager;
   }
-  if (!contains(rp_buffer_data(artifact), rp_buffer_size(artifact), "add"))
+  if (!contains(rp_buffer_data(artefact), rp_buffer_size(artefact), "add"))
     result = 1;
-  rp_buffer_destroy(artifact);
+  rp_buffer_destroy(artefact);
 
   rp_buffer *bundle = rp_manager_decompile_to_c_bundle(manager, error);
   if (bundle == NULL) {
