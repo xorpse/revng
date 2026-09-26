@@ -50,6 +50,8 @@
 #include "revng/RemoveLiftingArtifacts/PromoteInitCSVToUndef.h"
 #include "revng/RemoveLiftingArtifacts/RemoveLiftingArtifacts.h"
 #include "revng/SegmentReferences/DetectCStrings.h"
+#include "revng/SegmentReferences/DetectSegmentGlobals.h"
+#include "revng/SegmentReferences/NameSegmentGlobals.h"
 #include "revng/SegmentReferences/EmitFunctionPointers.h"
 #include "revng/SegmentReferences/EmitSegmentReferences.h"
 #include "revng/SegmentReferences/EmitStringConstants.h"
@@ -162,6 +164,8 @@ REGISTER(Analysis, ConvertFunctionsToCABI);
 REGISTER(Analysis, ConvertFunctionsToRaw);
 REGISTER(Analysis, DetectABI);
 REGISTER(Analysis, revng::pypeline::analyses::DetectCStrings);
+REGISTER(Analysis, revng::pypeline::analyses::DetectSegmentGlobals);
+REGISTER(Analysis, revng::pypeline::analyses::NameSegmentGlobals);
 REGISTER(Analysis, DetectStackSize);
 REGISTER(Analysis, EditByName);
 REGISTER(Analysis, EditCBody);

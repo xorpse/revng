@@ -90,6 +90,9 @@ analyses:
   - analysis: import-prototypes-from-db
     description: |-
       Import function prototypes from a database.
+  - analysis: name-segment-globals
+    description: |-
+      Name each global variable recovered in a segment after its offset.
   - analysis: convert-functions-to-cabi
     description: |-
       Convert as many `RawFunctionDefinition`s as possible to
@@ -400,6 +403,8 @@ branches:
         analyses:
           - analysis: detect-c-strings
             containers: [binaries-container, llvm-functions]
+          - analysis: detect-segment-globals
+            containers: [llvm-functions]
           - analysis: analyze-data-layout
             description: |-
               This analysis inspects the memory accesses performed by the input
@@ -412,6 +417,11 @@ branches:
     tasks:
       - pipe: emit-string-constants
         arguments: [binaries-container, llvm-functions]
+      - pipe: pure-llvm-passes-pipe
+        arguments: [llvm-functions]
+        configuration:
+          passes:
+            - segment-accesses-to-gep
       - pipe: pure-llvm-passes-pipe
         arguments: [llvm-functions]
         configuration:

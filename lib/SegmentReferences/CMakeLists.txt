@@ -5,9 +5,12 @@
 revng_add_analyses_library_internal(
   revngSegmentReferences
   DetectCStrings.cpp
+  DetectSegmentGlobals.cpp
   EmitFunctionPointers.cpp
   EmitSegmentReferences.cpp
   EmitStringConstants.cpp
+  NameSegmentGlobals.cpp
+  SegmentAccessesToGEP.cpp
   SegmentUsesEnumerator.cpp
   StringConstants.cpp)
 
