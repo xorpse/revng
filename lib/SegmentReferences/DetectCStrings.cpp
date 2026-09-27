@@ -178,9 +178,29 @@ void DetectCStrings::commit() {
     auto ByRating = [](const Candidate &LHS, const Candidate &RHS) {
       return LHS.Rating < RHS.Rating;
     };
-    const Candidate *Winner = std::max_element(Readings.begin(),
-                                               Readings.end(),
-                                               ByRating);
+
+    auto IsForeign = [this](const Candidate &Entry) {
+      Encoding TheEncoding = Entry.String.encoding();
+      return TheEncoding != Encoding::UTF8
+             and (TheEncoding == Encoding::UTF16BE) == LittleEndian;
+    };
+
+    llvm::SmallVector<const Candidate *, 3> Eligible;
+    for (const Candidate &Reading : Readings)
+      if (not IsForeign(Reading))
+        Eligible.push_back(&Reading);
+
+    if (Eligible.empty())
+      for (const Candidate &Reading : Readings)
+        Eligible.push_back(&Reading);
+
+    auto ByRatingIndirect = [&ByRating](const Candidate *LHS,
+                                        const Candidate *RHS) {
+      return ByRating(*LHS, *RHS);
+    };
+    const Candidate *Winner = *std::max_element(Eligible.begin(),
+                                                Eligible.end(),
+                                                ByRatingIndirect);
 
     if (Winner->Rating == Credibility::None)
       Winner = nullptr;

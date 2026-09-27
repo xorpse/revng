@@ -8,6 +8,8 @@
 
 #include "llvm/ADT/ArrayRef.h"
 
+#include "revng/Model/Architecture.h"
+#include "revng/Model/Binary.h"
 #include "revng/Model/GlobalVariableBuilder.h"
 #include "revng/PipeboxCommon/BinariesContainer.h"
 #include "revng/PipeboxCommon/Common.h"
@@ -70,12 +72,14 @@ private:
   RawBinaryView &BinaryView;
   model::GlobalVariableBuilder GlobalBuilder;
   CandidateList Candidates;
+  bool LittleEndian = true;
 
 public:
   DetectCStrings(model::Binary &Binary, RawBinaryView &BinaryView) :
     SegmentUses(Binary, SegmentUsesEnumerator::SegmentAccess::ReadOnly),
     BinaryView(BinaryView),
-    GlobalBuilder(Binary) {}
+    GlobalBuilder(Binary),
+    LittleEndian(model::Architecture::isLittleEndian(Binary.Architecture())) {}
 
 public:
   void run(llvm::Module &M, llvm::Function *LimitTo = nullptr);
